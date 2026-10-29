@@ -45,10 +45,6 @@ void pc_netplay_load_keepalive(int site);
 #include "pc_opengl.h"
 #ifdef __vita__
 #include "../vita/pc_vita_glsl.h"
-// Temporary diagnostic package: remove after device shader investigation.
-#ifndef PIKI_VITA_SHADER_PROBES
-#define PIKI_VITA_SHADER_PROBES 1
-#endif
 #endif
 #ifdef __vita__
 // Keep the native extension declaration separate from desktop GL headers.
