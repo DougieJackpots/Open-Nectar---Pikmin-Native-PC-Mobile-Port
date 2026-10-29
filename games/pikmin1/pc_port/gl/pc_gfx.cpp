@@ -2849,6 +2849,14 @@ static uint32_t sProgramBinaryMisses = 0;
 static double sShaderBuildMsThisFrame = 0.0;
 
 static void program_binary_init() {
+#if defined(__vita__)
+    // vitaGL: glBindAttribLocation on a program with no shader attached
+    // dereferences null (the cache path below binds before attaching), and
+    // vitaGL has no usable program-binary cache anyway. Leave the cache off
+    // so programs take the normal compile/attach/bind/link path.
+    printf("[PC Port] Shader binary cache disabled on Vita\n");
+    return;
+#endif
     if (const char* v = std::getenv("PIKMIN_SHADER_CACHE")) {
         if (v[0] == '0') { printf("[PC Port] Shader binary cache disabled (PIKMIN_SHADER_CACHE=0)\n"); return; }
     }
