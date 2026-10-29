@@ -92,9 +92,17 @@ namespace {
 
 constexpr const char* kConfigFilename = "pikmin_settings.conf";
 
+#ifdef __vita__
+constexpr int kDefaultWindowWidth = 960;
+constexpr int kDefaultWindowHeight = 544;
+#else
+constexpr int kDefaultWindowWidth = 1280;
+constexpr int kDefaultWindowHeight = 720;
+#endif
+
 struct PcConfig {
-    int windowWidth = 1280;
-    int windowHeight = 720;
+    int windowWidth = kDefaultWindowWidth;
+    int windowHeight = kDefaultWindowHeight;
     int displayMode = PC_WINDOW_FULLSCREEN_WINDOWED; // 0 windowed, 1 fullscreen, 2 borderless
     double refreshRate = 0.0;                        // 0 = auto (detect)
     bool vsync = true;                               // presentation pacing on/off
@@ -269,8 +277,8 @@ struct PcConfig {
     std::string pikminModel[3];
 
     void applyDefaults() {
-        windowWidth = 1280;
-        windowHeight = 720;
+        windowWidth = kDefaultWindowWidth;
+        windowHeight = kDefaultWindowHeight;
         displayMode = PC_WINDOW_FULLSCREEN_WINDOWED;
         refreshRate = 0.0;
         vsync = true;

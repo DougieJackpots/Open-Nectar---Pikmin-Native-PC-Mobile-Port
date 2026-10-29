@@ -30,10 +30,11 @@ option(PIKMIN_VITA_CORE_ONLY "Cross-compile Pikmin 1 logic only (no runnable gam
 if(PIKMIN_VITA_CORE_ONLY AND NOT VITA)
     message(FATAL_ERROR "PIKMIN_VITA_CORE_ONLY requires the VitaSDK toolchain")
 endif()
-if(VITA AND NOT PIKMIN_VITA_CORE_ONLY)
+option(PIKMIN_VITA_EXPERIMENTAL_GAME "Link the unvalidated Vita game runtime (developer builds only)" OFF)
+if(VITA AND NOT PIKMIN_VITA_CORE_ONLY AND NOT PIKMIN_VITA_EXPERIMENTAL_GAME)
     message(FATAL_ERROR
-        "The Vita renderer is not ported yet. Use -DPIKMIN_VITA_CORE_ONLY=ON "
-        "to validate the game logic; this does not produce a playable VPK.")
+        "Use -DPIKMIN_VITA_CORE_ONLY=ON for compilation checks, or explicitly "
+        "opt into -DPIKMIN_VITA_EXPERIMENTAL_GAME=ON for the unvalidated runtime.")
 endif()
 
 # ─── Build type ───
@@ -153,6 +154,9 @@ else()
     set(PIKMIN_GLES_DEFAULT OFF)
 endif()
 option(PIKMIN_GLES "Build with OpenGL ES 3.0 renderer" ${PIKMIN_GLES_DEFAULT})
+if(VITA AND PIKMIN_GLES)
+    message(FATAL_ERROR "The experimental Vita target uses vitaGL, not the GLES 3 backend")
+endif()
 
 # Controles táctiles (pc_port/touch): de serie en Android; en escritorio se
 # pueden activar para probarlos con ratón (SDL_HINT_MOUSE_TOUCH_EVENTS=1).
@@ -274,6 +278,24 @@ if (PIKMIN_VITA_CORE_ONLY)
     file(CREATE_LINK "${_sdl2_headers}"
          "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include/SDL2" SYMBOLIC)
     set(SDL2_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include" "${_sdl2_headers}")
+elseif (VITA)
+    find_package(SDL2 CONFIG REQUIRED)
+    if(NOT TARGET SDL2::SDL2-static)
+        message(FATAL_ERROR "Vita requires the static SDL2 vitaGL build (scripts/build-vita-deps.sh)")
+    endif()
+    set(SDL2_LIBRARIES SDL2::SDL2-static)
+    # SDL's Vita export lists two static stubs before their users. Keep them
+    # after vitaGL/vitashark and add vitashark's extension dependency.
+    get_target_property(_vita_sdl_links SDL2::SDL2-static INTERFACE_LINK_LIBRARIES)
+    list(FILTER _vita_sdl_links EXCLUDE REGEX "SceShaccCg_stub|SceKernelDmacMgr_stub")
+    list(APPEND _vita_sdl_links SceShaccCgExt taihen_stub SceShaccCg_stub SceKernelDmacMgr_stub)
+    set_property(TARGET SDL2::SDL2-static PROPERTY INTERFACE_LINK_LIBRARIES "${_vita_sdl_links}")
+    set(SDL2_INCLUDE_DIRS "${VITASDK}/arm-vita-eabi/include/SDL2")
+    file(STRINGS "${SDL2_INCLUDE_DIRS}/SDL_config.h" _vita_sdl_vgl
+        REGEX "^#define SDL_VIDEO_VITA_VGL 1")
+    if(NOT _vita_sdl_vgl)
+        message(FATAL_ERROR "SDL2 lacks the vitaGL backend; run scripts/build-vita-deps.sh")
+    endif()
 elseif (ANDROID)
     if (NOT TARGET SDL2)
         message(FATAL_ERROR "Android: SDL2 must be added as a target before this project (see android/app/jni/CMakeLists.txt)")
@@ -328,7 +350,7 @@ endif()
 
 # OpenGL de escritorio no existe en Android: allí el contexto es GLES/EGL y lo
 # aporta el NDK (fase 3 del plan de Android).
-if (NOT WIN32 AND NOT ANDROID AND NOT PIKMIN_VITA_CORE_ONLY)
+if (NOT WIN32 AND NOT ANDROID AND NOT VITA AND NOT PIKMIN_VITA_CORE_ONLY)
     find_package(OpenGL REQUIRED)
 endif()
 
@@ -460,6 +482,15 @@ set(PC_PORT_SOURCES
     pc_port/dolphin_stubs/jaudio_hw_stubs.cpp
     pc_port/dolphin_stubs/misc_stubs.cpp
 )
+if(VITA)
+    list(REMOVE_ITEM PC_PORT_SOURCES
+        pc_port/dolphin_stubs/pc_host_readable_os.cpp
+        pc_port/pc_discord.cpp pc_port/pc_livesplit.cpp)
+    list(APPEND PC_PORT_SOURCES
+        pc_port/vita/pc_vita_runtime.cpp
+        pc_port/vita/pc_vita_desktop_stubs.cpp
+        pc_port/vita/pc_host_readable_vita.cpp)
+endif()
 if(PIKMIN_SINGLE_PLAYER_ONLY)
     list(REMOVE_ITEM PC_PORT_SOURCES pc_port/pc_coop.cpp)
     list(APPEND PC_PORT_SOURCES pc_port/vita/pc_coop_singleplayer.cpp)
@@ -946,6 +977,9 @@ if (WIN32)
     # proyecto declara SDL_MAIN_HANDLED y define su propio main. Enlazarlo deja
     # SDL_main sin definir en todos los ejecutables.
     target_link_libraries(${NECTAR_GAME} PRIVATE ${SDL2_LIBRARIES} opengl32 comdlg32 ws2_32)
+elseif (VITA)
+    target_link_libraries(${NECTAR_GAME} PRIVATE m ${SDL2_LIBRARIES}
+        pthread SceSysmem_stub SceKernelThreadMgr_stub)
 elseif (ANDROID)
     # En Android no hay X11 ni OpenGL de escritorio. GLESv3 y EGL vienen del
     # NDK; log y android los necesita la capa de plataforma (logcat, ciclo de
@@ -968,7 +1002,7 @@ endif()
 # compiled out on Windows anyway (glibc's execinfo.h has no equivalent there).
 # En Android tampoco: el binario será una biblioteca compartida, no un
 # ejecutable con símbolos exportados.
-if (NOT WIN32 AND NOT ANDROID)
+if (NOT WIN32 AND NOT ANDROID AND NOT VITA)
     target_link_options(${NECTAR_GAME} PRIVATE -rdynamic)
 elseif (WIN32)
     # SDL2's CMake package links -mwindows, which hides the console and with it
@@ -983,7 +1017,7 @@ set_target_properties(${NECTAR_GAME} PROPERTIES
     OUTPUT_NAME "${NECTAR_OUTPUT_NAME}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
-if (NOT ANDROID AND NOT WIN32)
+if (NOT ANDROID AND NOT WIN32 AND NOT VITA)
     add_custom_command(TARGET ${NECTAR_GAME} POST_BUILD
         COMMAND /bin/chmod 775 "$<TARGET_FILE:${NECTAR_GAME}>"
         COMMENT "Ensuring the native Pikmin executable is runnable")
@@ -1708,4 +1742,13 @@ endif()
 # VRM u OBJ. Comparte con el editor de mapas la ImGui, OpenGL y nectar_assets.
 if (NECTAR_BUILD_MODELMAKER AND NOT ANDROID)
     add_subdirectory("${NECTAR_LIBS_DIR}/../tools/modelmaker" "${CMAKE_CURRENT_BINARY_DIR}/modelmaker")
+endif()
+
+# Packaging is opt-in with the experimental full Vita target. No assets are
+# embedded: the runtime reads the user's extracted data from ux0:data.
+if(VITA AND PIKMIN_VITA_EXPERIMENTAL_GAME)
+    include("${VITASDK}/share/vita.cmake")
+    vita_create_self(eboot.bin ${NECTAR_GAME})
+    vita_create_vpk(pikmin1-vita-experimental.vpk NECTR0001 eboot.bin
+        VERSION 00.01 NAME "Nectar Vita Dev")
 endif()

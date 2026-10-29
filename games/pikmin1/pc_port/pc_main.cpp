@@ -47,6 +47,9 @@ __declspec(dllexport) int           AmdPowerXpressRequestHighPerformance = 1;
 #endif
 
 #include "pc_crash.h"
+#ifdef __vita__
+#include "vita/pc_vita_runtime.h"
+#endif
 #include "pc_window.h"
 #include "pc_discord.h"
 #include "pc_gpu_preference.h"
@@ -78,6 +81,9 @@ int main(int argc, char* argv[])
     // Disable stdout buffering so we see logs immediately before any crash
     setvbuf(stdout, NULL, _IONBF, 0);
 
+#ifdef __vita__
+    if (!pc_vita_init_storage()) return 1;
+#endif
 #ifdef __ANDROID__
     // Logcat, carpeta del juego y ruta de guardado: antes de que nada abra un
     // fichero o escriba un mensaje. Sin carpeta no hay assets, y sin assets el
@@ -190,7 +196,13 @@ int main(int argc, char* argv[])
     // Initialize SDL2 Window and OpenGL Context FIRST
     printf("[PC Port] Initializing SDL2 window and GL context...\n");
     fflush(stdout);
-    if (!pc_window_init("Open Nectar", 1280, 720)) {
+    if (!pc_window_init("Open Nectar",
+#ifdef __vita__
+                        960, 544
+#else
+                        1280, 720
+#endif
+                        )) {
         printf("[PC Port Fatal Error] Could not initialize window/OpenGL!\n");
         fflush(stdout);
         return 1;

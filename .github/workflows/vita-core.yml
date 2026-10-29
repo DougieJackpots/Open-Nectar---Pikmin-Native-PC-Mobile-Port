@@ -1,6 +1,11 @@
-name: Vita core compilation (not a playable port)
+name: Vita compilation (experimental)
 on:
   workflow_dispatch:
+    inputs:
+      build_game:
+        description: Build an unvalidated developer VPK after the core checks
+        type: boolean
+        default: false
   pull_request:
     paths: ['games/pikmin1/**', 'libs/**', 'scripts/build-vita-core.sh', '.github/workflows/vita-core.yml']
 permissions:
@@ -47,4 +52,32 @@ jobs:
           path: |
             build-vita-core/libpikmin_legacy.a
             build-vita-core/libpikmin_vita_os.a
+          if-no-files-found: error
+
+  experimental-package:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_game
+    needs: compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned VitaSDK
+        shell: bash
+        run: |
+          archive=vitasdk-x86_64-linux-gnu-2026-10-15_05-01-16.tar.bz2
+          curl --fail --location --retry 3 \
+            "https://github.com/vitasdk/autobuilds/releases/download/sdk-snapshot-20261015.850.1/$archive" \
+            -o "$RUNNER_TEMP/$archive"
+          echo "801f483928523fe63547faf58a7dfdaca7482b26c33af0064acea96a906f7662  $RUNNER_TEMP/$archive" | sha256sum --check -
+          mkdir -p "$RUNNER_TEMP/vita-sdk"
+          tar -xjf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/vita-sdk"
+          echo "VITASDK=$RUNNER_TEMP/vita-sdk/vitasdk" >> "$GITHUB_ENV"
+      - name: Build SDL vitaGL dependencies
+        run: bash scripts/build-vita-deps.sh
+      - name: Link and package experimental runtime
+        run: bash scripts/build-vita-game.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pikmin1-vita-experimental-unvalidated
+          path: build-vita-game/pikmin1-vita-experimental.vpk
           if-no-files-found: error

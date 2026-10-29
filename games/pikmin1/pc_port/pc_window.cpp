@@ -510,6 +510,12 @@ void pc_window_set_pad_scheme(int scheme) {
 int pc_window_get_pad_scheme(void) { return sPadScheme; }
 int pc_window_scheme_default_gamepad_binding(int scheme, int action) {
     if (action < 0 || action >= PC_KEY_ACT_COUNT) return -1;
+#ifdef __vita__
+    // The built-in Vita pad has no analogue triggers. Keep R shoulder for
+    // GC Z (camera height) and use D-pad Up for GC R (zoom).
+    if (action == PC_KEY_ACT_R) return SDL_CONTROLLER_BUTTON_DPAD_UP;
+    if (action == PC_KEY_ACT_DPAD_UP) return -1;
+#endif
     return scheme == PC_PAD_SCHEME_SWITCH ? kSwitchGamepadBindings[action] : kDefaultGamepadBindings[action];
 }
 
@@ -989,7 +995,11 @@ bool pc_window_init(const char* title, int width, int height) {
     // GLES mode (PIKI_USE_GLES) requests an ES 3.0 context instead, which has
     // no compatibility/core distinction.
     auto applyGlAttrs = []() {
-#if PIKI_USE_GLES
+#if defined(__vita__)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+#elif PIKI_USE_GLES
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);

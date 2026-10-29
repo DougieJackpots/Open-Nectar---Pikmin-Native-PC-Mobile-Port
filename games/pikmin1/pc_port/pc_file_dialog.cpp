@@ -120,7 +120,7 @@ bool pc_file_dialog_begin(int tag, const char* title, const char* filterName, co
     return true;
 }
 
-#elif defined(__ANDROID__)
+#elif defined(__ANDROID__) || defined(__vita__)
 
 namespace {
 bool childOpen() { return false; }

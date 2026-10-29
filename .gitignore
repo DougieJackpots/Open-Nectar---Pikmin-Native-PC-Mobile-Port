@@ -30,3 +30,5 @@ release-out/
 
 # Vita developer compilation archives
 /build-vita-core/
+
+/build-vita-game/
