@@ -1423,6 +1423,9 @@ void loadConfig() {
             sConfig.fpsMode = atoi(val.c_str());
             if (sConfig.fpsMode < 0) sConfig.fpsMode = 0;
             if (sConfig.fpsMode > 3) sConfig.fpsMode = 3;
+#ifdef __vita__
+            sConfig.fpsMode = 0;
+#endif
         }
         else if (key == "chainActions") {
             sConfig.chainActions = atoi(val.c_str()) ? 1 : 0;
@@ -3193,11 +3196,16 @@ void mainRowValue(int row, char* out, size_t n) {
 
     const char* fpsModeNames[3] = { "30 FPS (stable)", "60 FPS (experimental)", "120 FPS (experimental)" };
     char fpsModeBuf[32];
+#ifdef __vita__
+    snprintf(fpsModeBuf, sizeof(fpsModeBuf), "30 FPS (Vita target)");
+#else
     if (sPending.fpsMode == 3) {
         snprintf(fpsModeBuf, sizeof(fpsModeBuf), "Monitor (%.0f Hz)", pc_window_get_refresh_rate());
     } else {
         snprintf(fpsModeBuf, sizeof(fpsModeBuf), "%s", fpsModeNames[sPending.fpsMode >= 0 && sPending.fpsMode < 3 ? sPending.fpsMode : 0]);
     }
+
+#endif
 
     char valueBuf[ROW_DISPLAY_COUNT][128];
     snprintf(valueBuf[0], sizeof(valueBuf[0]), "%s",
@@ -3309,11 +3317,15 @@ void mainRowChange(int row, bool left, bool right, bool ok) {
         }
         break;
     case ROW_FPS_MODE:
+#ifdef __vita__
+        sPending.fpsMode = 0;
+#else
         if (left) {
             sPending.fpsMode = (sPending.fpsMode - 1 + 4) % 4;
         } else if (right) {
             sPending.fpsMode = (sPending.fpsMode + 1) % 4;
         }
+#endif
         break;
     default:
         break;
@@ -8938,8 +8950,13 @@ int pc_settings_get_speedrun_ls_hide_clock(void) { return sConfig.speedrunLsHide
 const char* pc_settings_get_speedrun_ls_host(void) { return sConfig.speedrunLsHost; }
 int pc_settings_get_speedrun_ls_port(void) { return sConfig.speedrunLsPort; }
 int pc_settings_get_online_stun(void) { return sConfig.onlineStun; }
-int pc_settings_get_fps_mode(void) { if (pc_speedrun_active()) return 0;
+int pc_settings_get_fps_mode(void) {
+#ifdef __vita__
+    return 0; // original 30 FPS mode, regardless of persisted desktop settings
+#else
+    if (pc_speedrun_active()) return 0;
     return sConfig.fpsMode;
+#endif
 }
 
 int pc_settings_get_chain_actions(void) { if (pc_speedrun_active()) return 0;

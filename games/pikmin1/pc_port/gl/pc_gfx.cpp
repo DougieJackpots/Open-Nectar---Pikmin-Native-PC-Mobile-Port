@@ -43,6 +43,18 @@
 void pc_netplay_load_keepalive(int site);
 
 #include "pc_opengl.h"
+#ifdef __vita__
+#include "../vita/pc_vita_glsl.h"
+// Temporary diagnostic package: remove after device shader investigation.
+#ifndef PIKI_VITA_SHADER_PROBES
+#define PIKI_VITA_SHADER_PROBES 1
+#endif
+#endif
+#ifdef __vita__
+// Keep the native extension declaration separate from desktop GL headers.
+extern "C" void vglSetSemanticBindingMode(GLenum mode);
+static constexpr GLenum kVitaGlobalShaderSemantics = 1; // VGL_MODE_GLOBAL
+#endif
 #ifdef __ANDROID__
 #include "../android/pc_android.h"
 #endif
@@ -1738,6 +1750,10 @@ static unsigned char sDimWindowAlpha = 160;
 
 static bool ensure_dim_program()
 {
+#ifdef __vita__
+    // gl_VertexID overlay shaders await a Vita-compatible implementation.
+    return false;
+#endif
     if (sDimProgram && sDimVAO) return true;
     if (!glCreateShader_ptr || !glCreateProgram_ptr || !glGenVertexArrays_ptr) return false;
 
@@ -1802,6 +1818,10 @@ static GLint sOverlayRectLoc = -1, sOverlayColorLoc = -1, sOverlayRotLoc = -1, s
 
 static bool ensure_overlay_program()
 {
+#ifdef __vita__
+    // gl_VertexID overlay shaders await a Vita-compatible implementation.
+    return false;
+#endif
     if (sOverlayProgram && sOverlayVAO) return true;
     if (!glCreateShader_ptr || !glCreateProgram_ptr || !glGenVertexArrays_ptr) return false;
     static const char* kVert =
@@ -2253,7 +2273,11 @@ static const char* vShaderTail =
 
 // Fuente completa del shader de vértices: cabecera + iluminación GX compartida + cuerpo.
 static const std::string& vertex_shader_source() {
+    #ifdef __vita__
+    static const std::string src = pc_vita_glsl(std::string(vShaderHead) + kGxLightingGlsl + vShaderTail, true);
+#else
     static const std::string src = std::string(vShaderHead) + kGxLightingGlsl + vShaderTail;
+#endif
     return src;
 }
 static const char* vShaderSrc = nullptr; // se rellena en pc_gfx_init (vertex_shader_source)
@@ -2506,7 +2530,14 @@ static const char* fShaderTail =
     "}\n";
 
 static const std::string& fragment_shader_source() {
+#ifdef __vita__
+    // Do not compile the generic dynamic 16-stage evaluator at Vita startup.
+    // This boot program only establishes the shared vertex interface; every
+    // real draw below must use its exact specialised material program.
+    static const std::string src = pc_vita_glsl(pc_tev_build_fragment_source(PcTevShaderKey{}), false);
+#else
     static const std::string src = std::string(fShaderHead) + kGxLightingGlsl + kGxLightingFragGlsl + fShaderTail;
+#endif
     return src;
 }
 static const char* fShaderSrc = nullptr; // se rellena en pc_gfx_init (fragment_shader_source)
@@ -2849,6 +2880,14 @@ static uint32_t sProgramBinaryMisses = 0;
 static double sShaderBuildMsThisFrame = 0.0;
 
 static void program_binary_init() {
+#if defined(__vita__)
+    // vitaGL: glBindAttribLocation on a program with no shader attached
+    // dereferences null (the cache path below binds before attaching). Disable
+    // this application cache so programs take the normal compile/attach/bind/
+    // link path. vitaGL may still use its own internal shader cache.
+    printf("[PC Port] Shader binary cache disabled on Vita\n");
+    return;
+#endif
     if (const char* v = std::getenv("PIKMIN_SHADER_CACHE")) {
         if (v[0] == '0') { printf("[PC Port] Shader binary cache disabled (PIKMIN_SHADER_CACHE=0)\n"); return; }
     }
@@ -3024,6 +3063,14 @@ static void mesh_arena_init() {
 }
 
 void pc_gfx_init(void) {
+#ifdef __vita__
+    // POSTPONED reports successful compilation before any native shader exists.
+    // GLOBAL compiles immediately and supports the shared vertex shader used
+    // by our independently generated material programs.
+    vglSetSemanticBindingMode(kVitaGlobalShaderSemantics);
+    printf("[Vita] Immediate shader compilation enabled (global semantics).\n");
+    fflush(stdout);
+#endif
     state_touched();
     load_gl_functions();
     if (const char* value = std::getenv("PIKMIN_GPU_SKINNING")) sGpuSkinningEnabled = value[0] != '0';
@@ -3063,8 +3110,15 @@ void pc_gfx_init(void) {
     if (const char* value = std::getenv("PIKMIN_TEV_MAX_STAGES")) {
         sSpecialiseMaxStages = std::clamp(atoi(value), 0, 16);
     }
+#ifdef __vita__
+    sSpecialiseShaders = true;
+    sSpecialiseMaxStages = GX_MAXTEVSTAGE;
+    printf("[Vita] TEV materials compile individually; generic startup evaluator disabled.\n");
+#endif
+#ifndef __vita__
     printf("[PC Port] TEV specialisation: %s, up to %d stage(s); the rest use the ubershader.\n",
            sSpecialiseShaders ? "on" : "off", sSpecialiseMaxStages);
+#endif
     // The environment is the diagnostic shell: it overrides the saved setting
     // so an A/B on scale can be run without touching the player's config.
     if (const char* value = std::getenv("PIKMIN_RENDER_SCALE")) {
@@ -3100,6 +3154,7 @@ void pc_gfx_init(void) {
     GLuint vs = glCreateShader_ptr(GL_VERTEX_SHADER);
     vShaderSrc = vertex_shader_source().c_str();
     fShaderSrc = fragment_shader_source().c_str();
+#include "../vita/pc_vita_shader_probes.inc"
     glShaderSource_ptr(vs, 1, &vShaderSrc, NULL);
     glCompileShader_ptr(vs);
 
@@ -3114,10 +3169,14 @@ void pc_gfx_init(void) {
         else printf("[PC Port] Ubershader loaded from binary cache\n");
     }
 
+    printf("[PC GX Init] Creating fragment shader...\n");
     GLuint fs = glCreateShader_ptr(GL_FRAGMENT_SHADER);
     if (!uberFromBinary) {
+        printf("[PC GX Init] Uploading fragment shader...\n");
         glShaderSource_ptr(fs, 1, &fShaderSrc, NULL);
+        printf("[PC GX Init] Compiling fragment shader...\n");
         glCompileShader_ptr(fs);
+        printf("[PC GX Init] Fragment compile call returned.\n");
     }
 
     // Report shader compile errors
@@ -3142,10 +3201,15 @@ void pc_gfx_init(void) {
         }
         return true;
     };
+    printf("[PC GX Init] Checking shader compile status...\n");
     bool vsOk = checkShader(vs, "vertex shader");
     bool fsOk = uberFromBinary || checkShader(fs, "fragment shader");
     if (!vsOk || !fsOk) {
         printf("[PC Port Error] Shader compilation failed - rendering will be broken!\n");
+#ifdef __vita__
+        fflush(stdout);
+        std::abort();
+#endif
     }
 
     if (!uberFromBinary) {
@@ -3157,7 +3221,9 @@ void pc_gfx_init(void) {
             glProgramParameteri_ptr(sShaderProgram, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
             glGetError();
         }
+        printf("[PC GX Init] Linking TEV program (Vita may compile GLSL here)...\n");
         glLinkProgram_ptr(sShaderProgram);
+        printf("[PC GX Init] TEV link call returned.\n");
     }
 
     {
@@ -3167,8 +3233,16 @@ void pc_gfx_init(void) {
             char log[4096] = { 0 };
             if (glGetProgramInfoLog_ptr) glGetProgramInfoLog_ptr(sShaderProgram, sizeof(log), NULL, log);
             printf("[PC Port Shader Error] Program link failed:\n%s\n", log);
+#ifdef __vita__
+            fflush(stdout);
+            std::abort();
+#endif
         } else {
+#ifdef __vita__
+            printf("[Vita] Bootstrap shaders compiled and linked OK\n");
+#else
             printf("[PC Port] TEV evaluator shaders compiled and linked OK\n");
+#endif
             if (!uberFromBinary) program_binary_store(sShaderProgram, uberKey);
         }
     }
@@ -3677,7 +3751,21 @@ static bool sLastDofReady = false;
 static float sViewInvP00 = 1.0f, sViewInvP11 = 1.0f;
 static float sViewNear = 1.0f, sViewFar = 15000.0f;
 
-void pc_gfx_set_post_effects(const PcPostEffects& fx) { sPostEffects = fx; }
+void pc_gfx_set_post_effects(const PcPostEffects& fx) {
+#ifdef __vita__
+    (void)fx;
+    // Enforce the bring-up profile even when saved settings enable effects.
+    sPostEffects = PcPostEffects{};
+    sPostEffects.fxaa = false;
+    sPostEffects.colourGrading = false;
+    sPostEffects.bloom = false;
+    sPostEffects.ssao = false;
+    sPostEffects.dof = false;
+    sPostEffects.shadows = false;
+#else
+    sPostEffects = fx;
+#endif
+}
 
 void pc_gfx_set_dof_focus(float viewDistance)
 {
@@ -6921,7 +7009,14 @@ static GLuint compile_specialised_program(const PcTevShaderKey& key) {
     if (!glCreateShader_ptr || !sSharedVertexShader) return 0;
 
     const double buildT0 = submit_clock_ms();
+#ifdef __vita__
+    printf("[Vita Shader] Begin material: %u TEV stage(s)\n", unsigned(key.numStages));
+#endif
+    #ifdef __vita__
+    const std::string source = pc_vita_glsl(pc_tev_build_fragment_source(key), false);
+#else
     const std::string source = pc_tev_build_fragment_source(key);
+#endif
     const char* sourcePtr = source.c_str();
 
     // Cached binary first: no compile, no link, a few hundred microseconds.
@@ -6997,6 +7092,10 @@ static void use_program_for_current_state() {
     state_touched();
     if (!sSpecialiseShaders || sSpecialiseFailed
         || int(sNumTevStages) > sSpecialiseMaxStages) {
+#ifdef __vita__
+        fprintf(stderr, "[Vita Shader] Exact material shader unavailable; refusing a wrong-colour fallback.\n");
+        std::abort();
+#endif
         if (sCurrentProgram != sShaderProgram) {
             glUseProgram_ptr(sShaderProgram);
             select_uniform_cache(sShaderProgram);
@@ -7041,6 +7140,10 @@ static void use_program_for_current_state() {
     // netplay keep-alive polls the network.
     if (pc_netplay_load_keepalive != nullptr) pc_netplay_load_keepalive(pc_netplay_loadguard::kSiteShader);
     if (!program) {
+#ifdef __vita__
+        fprintf(stderr, "[Vita Shader] Material failed; inspect the shader errors above.\n");
+        std::abort();
+#endif
         // One failure is treated as a permanent fallback: a configuration this
         // generator cannot express must not be retried for every draw.
         sSpecialiseFailed = true;
@@ -7091,7 +7194,12 @@ static void use_program_for_current_state() {
 
 void pc_gfx_set_shader_specialisation(bool enabled) {
     pc_gfx_flush_batch();  // changes which program the next batch compiles to
+#ifdef __vita__
+    (void)enabled;
+    sSpecialiseShaders = true;
+#else
     sSpecialiseShaders = enabled;
+#endif
 }
 
 bool pc_gfx_get_shader_specialisation(void) {

@@ -6,6 +6,8 @@ on:
         description: Build an unvalidated developer VPK after the core checks
         type: boolean
         default: false
+  push:
+    branches: ['vita/shader-diagnostics']
   pull_request:
     paths: ['games/pikmin1/**', 'libs/**', 'scripts/build-vita-core.sh', '.github/workflows/vita-core.yml']
 permissions:
@@ -55,7 +57,7 @@ jobs:
           if-no-files-found: error
 
   experimental-package:
-    if: github.event_name == 'workflow_dispatch' && inputs.build_game
+    if: (github.event_name == 'workflow_dispatch' && inputs.build_game) || (github.event_name == 'push' && github.ref == 'refs/heads/vita/shader-diagnostics')
     needs: compile
     runs-on: ubuntu-latest
     timeout-minutes: 45

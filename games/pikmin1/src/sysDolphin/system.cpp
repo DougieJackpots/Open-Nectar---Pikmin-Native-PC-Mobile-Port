@@ -364,6 +364,10 @@ void System::run(BaseApp* app)
     auto lastFpsPrint = std::chrono::steady_clock::now();
 
     // Initialize frame scheduler for fixed-step timing
+#ifdef __vita__
+    setFrameClamp(2);
+    pc_frame_set_vsync_lock(false);
+#endif
     PcFrameScheduler frameScheduler;
     frameScheduler.reset(std::chrono::steady_clock::now().time_since_epoch().count() / 1e9, mFrameRate);
 

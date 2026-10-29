@@ -203,8 +203,16 @@ void* piki_pc_alloc(size_t size)
 			// says what was loading. Reported once per size class step.
 			// getenv here, not once: the first big blocks predate env.txt.
 			if (size >= (4u << 20) && getenv("PIKMIN_ALLOC_TRACE")) {
+#ifdef __vita__
+                // Vita's printf path does not render %zu correctly.
+                fprintf(stderr, "[PC Alloc] big block %lu MB (live now %lu MB in %lu blocks)\n",
+                        static_cast<unsigned long>(size >> 20),
+                        static_cast<unsigned long>(sLiveBytes >> 20),
+                        static_cast<unsigned long>(sLiveAllocations));
+#else
 				fprintf(stderr, "[PC Alloc] big block %zu MB (live now %zu MB in %zu blocks)\n",
 				        size >> 20, (sLiveBytes) >> 20, sLiveAllocations);
+#endif
 			}
 		}
 		sTotalAllocations++;
