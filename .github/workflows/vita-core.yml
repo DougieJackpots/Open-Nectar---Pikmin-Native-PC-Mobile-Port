@@ -1,0 +1,50 @@
+name: Vita core compilation (not a playable port)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['games/pikmin1/**', 'libs/**', 'scripts/build-vita-core.sh', '.github/workflows/vita-core.yml']
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Vita memory bounds on the host
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror \
+            -Igames/pikmin1/pc_port/vita/tests -Igames/pikmin1/pc_port \
+            games/pikmin1/pc_port/vita/pc_host_readable_vita.cpp \
+            games/pikmin1/pc_port/vita/pc_host_readable_vita_test.cpp \
+            -o "$RUNNER_TEMP/vita-memory-test"
+          "$RUNNER_TEMP/vita-memory-test"
+      - name: Test single-player feature gate
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -DPIKI_SINGLE_PLAYER_ONLY=1 \
+            -Igames/pikmin1/pc_port \
+            games/pikmin1/pc_port/vita/pc_coop_singleplayer.cpp \
+            games/pikmin1/pc_port/vita/pc_singleplayer_test.cpp \
+            -o "$RUNNER_TEMP/vita-singleplayer-test"
+          "$RUNNER_TEMP/vita-singleplayer-test"
+      - name: Install pinned VitaSDK
+        shell: bash
+        run: |
+          archive=vitasdk-x86_64-linux-gnu-2026-10-15_05-01-16.tar.bz2
+          curl --fail --location --retry 3 \
+            "https://github.com/vitasdk/autobuilds/releases/download/sdk-snapshot-20261015.850.1/$archive" \
+            -o "$RUNNER_TEMP/$archive"
+          echo "801f483928523fe63547faf58a7dfdaca7482b26c33af0064acea96a906f7662  $RUNNER_TEMP/$archive" | sha256sum --check -
+          mkdir -p "$RUNNER_TEMP/vita-sdk"
+          tar -xjf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/vita-sdk"
+          echo "VITASDK=$RUNNER_TEMP/vita-sdk/vitasdk" >> "$GITHUB_ENV"
+      - name: Cross-compile Pikmin 1 logic and OS
+        run: bash scripts/build-vita-core.sh
+      - name: Preserve developer archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: pikmin1-vita-core-not-playable
+          path: |
+            build-vita-core/libpikmin_legacy.a
+            build-vita-core/libpikmin_vita_os.a
+          if-no-files-found: error

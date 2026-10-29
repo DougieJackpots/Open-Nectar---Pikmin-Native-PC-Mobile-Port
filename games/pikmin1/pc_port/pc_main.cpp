@@ -203,7 +203,9 @@ int main(int argc, char* argv[])
     // A netplay launch locks the sim settings here; the joiner adopts the host's.
     if (pc_netplay_launch_post_settings != nullptr) pc_netplay_launch_post_settings();
     // Con Pikmin 2 instalado, su Louie sirve de capitán sin bajar ningún pack.
+#if !PIKI_SINGLE_PLAYER_ONLY
     pc_hd_models_import_pikmin2();
+#endif
 
     printf("[PC Port] Initializing game system...\n");
     fflush(stdout);

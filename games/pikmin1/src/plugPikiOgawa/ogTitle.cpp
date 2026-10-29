@@ -73,7 +73,7 @@ zen::ogScrTitleMgr::ogScrTitleMgr()
 	// clonados del último. Co-op y VS van en Play Together; Challenge Mode,
 	// Speedrun, Randomizer y Custom Maps en Extra Modes (pcSetupMainMenus).
 	// maxListHeight: aunque se añadan opciones, nunca se pisan.
-	const PcMenuExtend extMain = { 3, 30, -50, 'yoko', 40, false, 150 };
+	const PcMenuExtend extMain = { PIKI_SINGLE_PLAYER_ONLY ? 2 : 3, 30, -50, 'yoko', 40, false, 150 };
 	mMenuNoChallenge   = new DrawMenu("screen/blo/m_select.blo", false, false, &extMain);
 	mMenuWithChallenge = mMenuNoChallenge; // Challenge Mode va en Extra Modes
 	// Left clicks land on these rows only. The Options menus opt in where they are built,
@@ -116,6 +116,7 @@ zen::ogScrTitleMgr::ogScrTitleMgr()
 	pic->setAlpha(0);
 #if defined(PIKI_PC_PORT)
 	for (DrawMenu* sub : { mPcPlayMenu, mPcExtraMenu[0], mPcExtraMenu[1] }) {
+		if (!sub) continue;
 		pic = static_cast<P2DPicture*>(sub->getScreenPtr()->search('back', true));
 		pic->setAlpha(0);
 	}
@@ -216,12 +217,21 @@ void zen::ogScrTitleMgr::pcSetupMainMenus()
 	static char sCustomLabel[]     = "Custom Maps";
 
 	// Principal: Start y Options son los del .blo (traducidos en PAL).
+#if PIKI_SINGLE_PLAYER_ONLY
+	char* main[4] = { nullptr, sExtraLabel, pcRowText(mMenuNoChallenge, 1), sExitLabel };
+	pcLabelRows(mMenuNoChallenge, main, 4);
+#else
 	char* main[5] = { nullptr, sPlayLabel, sExtraLabel, pcRowText(mMenuNoChallenge, 1), sExitLabel };
 	pcLabelRows(mMenuNoChallenge, main, 5);
+#endif
 
+#if PIKI_SINGLE_PLAYER_ONLY
+	mPcPlayMenu = nullptr;
+#else
 	mPcPlayMenu = new DrawMenu("screen/blo/m_select.blo", false, false);
 	char* play[2] = { sCoopLabel, sVsLabel };
 	pcLabelRows(mPcPlayMenu, play, 2);
+#endif
 
 	// Extra Modes: m_select (2 filas) o m_selec2 (3, con Challenge Mode) y un
 	// hueco más.
@@ -234,7 +244,7 @@ void zen::ogScrTitleMgr::pcSetupMainMenus()
 	pcLabelRows(mPcExtraMenu[1], extra1, 4);
 	// The submenus take clicks like the main menu, so a click lands on the row under it
 	// rather than acting as A on the highlighted one.
-	mPcPlayMenu->setPointerClicks(true);
+	if (mPcPlayMenu) mPcPlayMenu->setPointerClicks(true);
 	mPcExtraMenu[0]->setPointerClicks(true);
 	mPcExtraMenu[1]->setPointerClicks(true);
 }
@@ -245,6 +255,9 @@ void zen::ogScrTitleMgr::pcSetupMainMenus()
 bool zen::ogScrTitleMgr::pcRunAction(int action)
 {
 	if (action < 0) return false;
+#if PIKI_SINGLE_PLAYER_ONLY
+	if (action == 2 || action == 3) return false;
+#endif
 	if (action != 4) {
 		// Cualquier salida del título decide de nuevo: el Randomizer solo
 		// vale si es lo elegido, y la partida en curso ya no es ninguna.
@@ -475,6 +488,19 @@ zen::ogScrTitleMgr::TitleStatus zen::ogScrTitleMgr::update(Controller* input)
 		if (flag0 != 0) {
 			break;
 		}
+#if PIKI_SINGLE_PLAYER_ONLY
+		// Start / Extra Modes / Options / Exit: no multiplayer entry point.
+		if (mCurrentSelection == 1) {
+			mCurrentMenuID = MENU_ExtraModes;
+			pcExtraMenu()->start(0);
+			break;
+		}
+		static const int kMainToAction[4] = { 0, -1, 4, 7 };
+		if (mCurrentSelection >= 0 && mCurrentSelection < 4) {
+			if (pcRunAction(kMainToAction[mCurrentSelection])) return mStatus;
+			if (mCurrentMenuID != MENU_MainMenu) break;
+		}
+#else
 		// 0 Start, 1 Play Together, 2 Extra Modes, 3 Options, 4 Exit.
 		if (mCurrentSelection == 1 || mCurrentSelection == 2) {
 			mCurrentMenuID = mCurrentSelection == 1 ? MENU_PlayTogether : MENU_ExtraModes;
@@ -486,6 +512,7 @@ zen::ogScrTitleMgr::TitleStatus zen::ogScrTitleMgr::update(Controller* input)
 			if (pcRunAction(kMainToAction[mCurrentSelection])) return mStatus;
 			if (mCurrentMenuID != MENU_MainMenu) break; // Options
 		}
+#endif
 #else
 		if (mCurrentSelection == 0) {
 			// Start
@@ -514,7 +541,9 @@ zen::ogScrTitleMgr::TitleStatus zen::ogScrTitleMgr::update(Controller* input)
 		break;
 	}
 #if defined(PIKI_PC_PORT)
+#if !PIKI_SINGLE_PLAYER_ONLY
 	case MENU_PlayTogether:
+#endif
 	case MENU_ExtraModes:
 	{
 		DrawMenu* menu = mCurrentMenuID == MENU_PlayTogether ? mPcPlayMenu : pcExtraMenu();
@@ -542,7 +571,7 @@ zen::ogScrTitleMgr::TitleStatus zen::ogScrTitleMgr::update(Controller* input)
 		if (menu->checkSelectMenuCancel()) {
 			// De vuelta al principal, con su fila marcada.
 			menu->setCancelSelectMenuNo(-1);
-			mMainMenu->start(mCurrentMenuID == MENU_PlayTogether ? 1 : 2);
+			mMainMenu->start(PIKI_SINGLE_PLAYER_ONLY ? 1 : (mCurrentMenuID == MENU_PlayTogether ? 1 : 2));
 			mCurrentMenuID = MENU_MainMenu;
 		}
 		break;
@@ -914,7 +943,7 @@ void zen::ogScrTitleMgr::draw(Graphics& gfx)
 #if defined(PIKI_PC_PORT)
 		case MENU_PlayTogether:
 		{
-			mPcPlayMenu->draw(gfx);
+			if (mPcPlayMenu) mPcPlayMenu->draw(gfx);
 			break;
 		}
 		case MENU_ExtraModes:

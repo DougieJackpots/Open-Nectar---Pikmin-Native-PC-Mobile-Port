@@ -18,7 +18,7 @@
 #include <limits>
 #include <mutex>
 #include <new>
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__vita__)
 #include <sys/mman.h>
 #endif
 
@@ -60,6 +60,11 @@ static constexpr size_t kMapThreshold = 64u << 20;
 #ifdef _WIN32
 static void* map_zero_pages(size_t bytes) { return VirtualAlloc(nullptr, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }
 static void unmap_pages(void* p, size_t) { VirtualFree(p, 0, MEM_RELEASE); }
+#elif defined(__vita__)
+// Vita has no demand-paged mmap. Keep zero initialisation and matching free
+// semantics; this is a real allocation and must fit the eventual memory budget.
+static void* map_zero_pages(size_t bytes) { return std::calloc(1, bytes); }
+static void unmap_pages(void* p, size_t) { std::free(p); }
 #else
 static void* map_zero_pages(size_t bytes)
 {
