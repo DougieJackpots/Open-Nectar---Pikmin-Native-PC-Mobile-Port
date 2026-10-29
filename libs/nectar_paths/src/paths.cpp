@@ -154,6 +154,8 @@ fs::path executableFilePath()
     const DWORD count = GetModuleFileNameW(nullptr, path, 4096);
     if (count == 0 || count >= 4096) return {};
     return fs::path(std::wstring(path, count));
+#elif defined(__vita__)
+    return fs::path("app0:/eboot.bin");
 #elif defined(__APPLE__)
     std::vector<char> invoked(4096);
     std::uint32_t invokedSize = static_cast<std::uint32_t>(invoked.size());
@@ -175,7 +177,9 @@ fs::path executableFilePath()
 
 fs::path standardUserConfigDirectory()
 {
-#ifdef _WIN32
+#ifdef __vita__
+    return fs::path("config"); // runtime enters the writable game directory first
+#elif defined(_WIN32)
     const char* base = std::getenv("LOCALAPPDATA");
     if (base == nullptr || *base == '\0') return {};
     return fs::path(base) / "Open Nectar";
@@ -190,7 +194,9 @@ fs::path standardUserConfigDirectory()
 
 fs::path standardUserCacheDirectory()
 {
-#ifdef _WIN32
+#ifdef __vita__
+    return fs::path("cache");
+#elif defined(_WIN32)
     if (const wchar_t* local = _wgetenv(L"LOCALAPPDATA"); local != nullptr && *local != L'\0')
         return fs::path(local) / L"Open Nectar" / L"cache";
     return fs::temp_directory_path() / "Open Nectar cache";

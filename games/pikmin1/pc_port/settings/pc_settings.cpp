@@ -92,9 +92,17 @@ namespace {
 
 constexpr const char* kConfigFilename = "pikmin_settings.conf";
 
+#ifdef __vita__
+constexpr int kDefaultWindowWidth = 960;
+constexpr int kDefaultWindowHeight = 544;
+#else
+constexpr int kDefaultWindowWidth = 1280;
+constexpr int kDefaultWindowHeight = 720;
+#endif
+
 struct PcConfig {
-    int windowWidth = 1280;
-    int windowHeight = 720;
+    int windowWidth = kDefaultWindowWidth;
+    int windowHeight = kDefaultWindowHeight;
     int displayMode = PC_WINDOW_FULLSCREEN_WINDOWED; // 0 windowed, 1 fullscreen, 2 borderless
     double refreshRate = 0.0;                        // 0 = auto (detect)
     bool vsync = true;                               // presentation pacing on/off
@@ -269,8 +277,8 @@ struct PcConfig {
     std::string pikminModel[3];
 
     void applyDefaults() {
-        windowWidth = 1280;
-        windowHeight = 720;
+        windowWidth = kDefaultWindowWidth;
+        windowHeight = kDefaultWindowHeight;
         displayMode = PC_WINDOW_FULLSCREEN_WINDOWED;
         refreshRate = 0.0;
         vsync = true;
@@ -5385,6 +5393,13 @@ bool playerCountSpanish() { return pc_settings_get_language() == 3; } // OS_LANG
 }
 
 void pc_playercount_prompt_open(void) {
+#if PIKI_SINGLE_PLAYER_ONLY
+    sPlayerCountOpen = false;
+    sPlayerCountChoice = 0;
+    sPlayerCountResult = PC_PLAYERCOUNT_ONE;
+    sPlayerCountChallenge = false;
+    return;
+#endif
     sPlayerCountOpen    = true;
     sPlayerCountChoice  = sConfig.coopPlayers == 2 ? 1 : 0;
     sPlayerCountResult  = PC_PLAYERCOUNT_PENDING;
@@ -5999,6 +6014,13 @@ void pcCaptainPromptInput() {
 }
 
 void pc_captain_prompt_open(void) {
+#if PIKI_SINGLE_PLAYER_ONLY
+    sCaptainPromptOpen = false;
+    sCaptainPromptChoice = PC_CAPTAIN_OLIMAR;
+    sCaptainPromptResult = PC_DEVASSIGN_OK;
+    pc_coop_set_captain(0, PC_CAPTAIN_OLIMAR);
+    return;
+#endif
     pc_captain_custom_refresh(); // personajes instalados con el juego abierto
     sCaptainCustomPage = 0;
     sCaptainPromptOpen   = true;
@@ -9256,7 +9278,7 @@ const char* pc_settings_group_summary(int group) {
     case PC_SET_GROUP_DISPLAY: return "Window, resolution, frame rate";
     case PC_SET_GROUP_GRAPHICS: return "Effects, colour, texture packs, HD models";
     case PC_SET_GROUP_CONTROLS: return "Actions, lock-on, sticks, gyro, bindings";
-    case PC_SET_GROUP_CAMERA: return "Free camera, first person, co-op view";
+    case PC_SET_GROUP_CAMERA: return PIKI_SINGLE_PLAYER_ONLY ? "Free camera, first person" : "Free camera, first person, co-op view";
     case PC_SET_GROUP_GAMEPLAY: return "Pikmin behaviour, night, fireflies, HUD";
     case PC_SET_GROUP_CHEATS: return "Day, health, Pikmin limit, whistle";
     case PC_SET_GROUP_DATA: return "Saves, reset settings";
@@ -9529,8 +9551,10 @@ const GroupRow kCameraRows[] = {
     { SRC_MODS, 38, "Free Camera Speed", "How fast the right stick turns the free camera. 100% is the default." },
     { SRC_MODS, 43, "Face Forward Aims At", "With Free Camera, what L (face forward) points the camera at. Captain: behind the captain, and the cursor comes back in front of him. Cursor: towards the cursor, wherever you left it, as in the original game." },
     { SRC_MODS, 18, "First Person", "Look at the world from inside Olimar's helmet. Switch in game with the First Person button (V on keyboard, L3 on a controller)." },
+#if !PIKI_SINGLE_PLAYER_ONLY
     { SRC_MODS, 6, "Co-op Split Screen", "How the screen divides in two-player co-op." },
     { SRC_MODS, 7, "Co-op Merged Camera", "Joins both halves into one view while the captains are close." },
+#endif
 };
 
 const GroupRow kGameplayRows[] = {

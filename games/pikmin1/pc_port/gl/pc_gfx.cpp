@@ -7,7 +7,7 @@
 #include <direct.h>
 #endif
 #include <cmath>
-#if defined(_WIN32) || defined(__ANDROID__)
+#if defined(_WIN32) || defined(__ANDROID__) || defined(__vita__)
 // glibc's backtrace() has no Windows equivalent worth pulling a dependency in
 // for, and bionic has no execinfo.h; the wild-vertex diagnostic below degrades
 // to its raw dump instead.
@@ -725,7 +725,9 @@ static GLuint sVBO = 0;
 // el primer frame de cada escena, que da la vuelta al anillo esperando a
 // la GPU y no se nota porque es un frame de carga. El driver hace residente
 // todo el anillo, así que 8 MB en vez de 64 son 56 MB de PSS menos.
-#if PIKI_USE_GLES
+#if defined(__vita__)
+static size_t sVboCapacity = 4 * 1024 * 1024;
+#elif PIKI_USE_GLES
 static size_t sVboCapacity = 8 * 1024 * 1024;
 #else
 static size_t sVboCapacity = 16 * 1024 * 1024;
@@ -1124,7 +1126,9 @@ static GLuint sMeshVAO = 0;
 static GLuint sStreamVAO = 0;
 // Mapas del editor de hasta 300.000 triángulos (76 B x 3 por triángulo) más
 // todo lo demás; lo que no cabe se dibuja igual, sin caché.
-#if defined(__ANDROID__)
+#if defined(__vita__)
+static size_t sMeshArenaCapacity = size_t(8) << 20;
+#elif defined(__ANDROID__)
 static size_t sMeshArenaCapacity = size_t(64) << 20;
 #else
 static size_t sMeshArenaCapacity = size_t(128) << 20;
@@ -5028,7 +5032,7 @@ void pc_gfx_set_blend_mode(GXBlendMode type, GXBlendFactor srcFactor, GXBlendFac
     seenSerial = sGlPipelineGuardSerial;
     valid = true; lastType = type; lastSrc = srcFactor; lastDst = dstFactor; lastOp = op;
     pc_gfx_note_gl_state_change();
-#if !PIKI_USE_GLES
+#if !PIKI_USE_GLES && !defined(__vita__)
     glDisable(GL_COLOR_LOGIC_OP);
 #endif
     glBlendEquation_ptr(GL_FUNC_ADD);
@@ -5062,15 +5066,15 @@ void pc_gfx_set_blend_mode(GXBlendMode type, GXBlendFactor srcFactor, GXBlendFac
         glBlendFunc(GL_ONE, GL_ONE);
     } else if (type == GX_BM_LOGIC) {
         glDisable(GL_BLEND);
-#if PIKI_USE_GLES
-        // OpenGL ES has no colour logic operations. GX_COPY (the normal case)
+#if PIKI_USE_GLES || defined(__vita__)
+        // GLES and vitaGL have no colour logic operations. GX_COPY (the normal case)
         // is already represented by drawing with blending disabled. The
         // other operations need shader/framebuffer emulation if live content
         // is ever found to rely on them.
         static bool warned = false;
         if (op != GX_LO_COPY && !warned) {
             warned = true;
-            fprintf(stderr, "[PC Port Warning] GLES does not support GX logic op %u; using COPY\n",
+            fprintf(stderr, "[PC Port Warning] Backend does not support GX logic op %u; using COPY\n",
                     static_cast<unsigned>(op));
         }
 #else
@@ -9326,7 +9330,7 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
                                 // this list is reaching us from a draw path
                                 // that never programmed one. Name that path
                                 // instead of inferring it.
-#if defined(_WIN32) || defined(__ANDROID__)
+#if defined(_WIN32) || defined(__ANDROID__) || defined(__vita__)
                                 fprintf(stderr, "[PC GX] wild draw call path: "
                                                 "unavailable on this platform\n");
 #else

@@ -402,7 +402,12 @@ BOOL OSJamMessage(OSMessageQueue* queue, OSMessage msg, s32 flags) {
 /* ──────────────────────────────────────────────
  *  Memory / Arena / Heap
  * ────────────────────────────────────────────── */
-static u8 sArenaMemory[256 * 1024 * 1024]; // 256 MB simulated arena
+#ifndef PIKI_OS_ARENA_MIB
+#define PIKI_OS_ARENA_MIB 256
+#endif
+static_assert(PIKI_OS_ARENA_MIB >= 24 && PIKI_OS_ARENA_MIB <= 256,
+              "Simulated arena must be between 24 and 256 MiB");
+alignas(32) static u8 sArenaMemory[PIKI_OS_ARENA_MIB * 1024 * 1024];
 static void* sArenaLo = sArenaMemory;
 static void* sArenaHi = sArenaMemory + sizeof(sArenaMemory);
 
@@ -426,8 +431,8 @@ void  OSFreeToHeap(OSHeapHandle heap, void* ptr)   { (void)heap; free(ptr); }
 OSHeapHandle OSCreateHeap(void* start, void* end)  { (void)start; (void)end; return 0; }
 OSHeapHandle OSSetCurrentHeap(OSHeapHandle heap)   { OSHeapHandle old = __OSCurrHeap; __OSCurrHeap = heap; return old; }
 
-u32 OSGetPhysicalMem()  { return 256 * 1024 * 1024; }
-u32 OSGetConsoleSimulatedMem() { return 256 * 1024 * 1024; }
+u32 OSGetPhysicalMem()  { return sizeof(sArenaMemory); }
+u32 OSGetConsoleSimulatedMem() { return sizeof(sArenaMemory); }
 
 /* ──────────────────────────────────────────────
  *  Cache operations → no-ops on PC

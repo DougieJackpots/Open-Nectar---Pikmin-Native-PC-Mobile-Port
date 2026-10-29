@@ -27,3 +27,8 @@ games/pikmin2/pikmin2-decomp/aoi.exe
 # Salida de los scripts de release
 build-release/
 release-out/
+
+# Vita developer compilation archives
+/build-vita-core/
+
+/build-vita-game/

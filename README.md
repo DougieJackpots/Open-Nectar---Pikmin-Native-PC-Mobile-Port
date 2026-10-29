@@ -14,6 +14,14 @@ To make it clear: I'm a coder and I use claude as a tool not as a substitute. I 
 
 ## Project Status
 
+### Experimental PS Vita work (Pikmin 1)
+
+An experimental Vita game executable and developer VPK now compile, link and
+package in this fork. The Vita profile is Olimar-only and excludes Nectar Map
+Maker and local co-op/VS. **Booting, rendering and gameplay have not been
+validated on hardware; this is not a playable release.** See the
+[port status, build instructions and device test](docs/PS_VITA_PORT.md).
+
 ### Pikmin 2
 
 **Playable from start to finish**, natively, on Linux, Windows and Android,

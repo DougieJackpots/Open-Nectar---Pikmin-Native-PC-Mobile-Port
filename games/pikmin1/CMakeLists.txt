@@ -18,6 +18,24 @@ endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
+if(VITA)
+    # Pass compiler output straight to the assembler; avoid large temporary
+    # assembly files on slow/sandboxed filesystems.
+    add_compile_options(-pipe $<$<COMPILE_LANGUAGE:CXX>:-Wno-register>)
+endif()
+
+# First Vita milestone: compile the real game logic without pretending that
+# the desktop GL renderer is a working Vita backend.
+option(PIKMIN_VITA_CORE_ONLY "Cross-compile Pikmin 1 logic only (no runnable game)" OFF)
+if(PIKMIN_VITA_CORE_ONLY AND NOT VITA)
+    message(FATAL_ERROR "PIKMIN_VITA_CORE_ONLY requires the VitaSDK toolchain")
+endif()
+option(PIKMIN_VITA_EXPERIMENTAL_GAME "Link the unvalidated Vita game runtime (developer builds only)" OFF)
+if(VITA AND NOT PIKMIN_VITA_CORE_ONLY AND NOT PIKMIN_VITA_EXPERIMENTAL_GAME)
+    message(FATAL_ERROR
+        "Use -DPIKMIN_VITA_CORE_ONLY=ON for compilation checks, or explicitly "
+        "opt into -DPIKMIN_VITA_EXPERIMENTAL_GAME=ON for the unvalidated runtime.")
+endif()
 
 # ─── Build type ───
 # An unset build type means no -O flag at all, which is -O0: the game then runs
@@ -136,6 +154,9 @@ else()
     set(PIKMIN_GLES_DEFAULT OFF)
 endif()
 option(PIKMIN_GLES "Build with OpenGL ES 3.0 renderer" ${PIKMIN_GLES_DEFAULT})
+if(VITA AND PIKMIN_GLES)
+    message(FATAL_ERROR "The experimental Vita target uses vitaGL, not the GLES 3 backend")
+endif()
 
 # Controles táctiles (pc_port/touch): de serie en Android; en escritorio se
 # pueden activar para probarlos con ratón (SDL_HINT_MOUSE_TOUCH_EVENTS=1).
@@ -146,7 +167,7 @@ option(PIKMIN_TOUCH "Build the touch control layer" ${PIKMIN_GLES_DEFAULT})
 # Android no se compila; se rehace como interfaz Android en la fase 7 del plan
 # de docs/ANDROID_PLAN.md. Los tests se ejecutan en la máquina que compila,
 # así que tampoco tienen sentido al cruzar hacia un dispositivo.
-if(ANDROID)
+if(ANDROID OR VITA)
     set(PIKMIN_DESKTOP_DEFAULT OFF)
 else()
     set(PIKMIN_DESKTOP_DEFAULT ON)
@@ -156,6 +177,14 @@ option(PIKMIN_BUILD_TESTS "Build the host-run test executables" ${PIKMIN_DESKTOP
 option(NECTAR_BUILD_MAPMAKER "Build the VS map editor (tools/mapmaker)" ${PIKMIN_DESKTOP_DEFAULT})
 option(NECTAR_BUILD_MODELMAKER "Build the model maker (tools/modelmaker)" ${PIKMIN_DESKTOP_DEFAULT})
 option(NECTAR_ONLINE "Build the experimental direct online co-op layer" OFF)
+option(PIKMIN_SINGLE_PLAYER_ONLY "Build Olimar-only play without local co-op or VS" ${VITA})
+option(PIKMIN_NETPLAY_BUILD "Deterministic netplay build" OFF)
+if(VITA AND (NECTAR_BUILD_MAPMAKER OR NECTAR_BUILD_MODELMAKER OR PIKMIN_BUILD_LAUNCHER))
+    message(FATAL_ERROR "Vita builds exclude the desktop launcher and editors")
+endif()
+if(PIKMIN_SINGLE_PLAYER_ONLY AND (NECTAR_ONLINE OR PIKMIN_NETPLAY_BUILD))
+    message(FATAL_ERROR "PIKMIN_SINGLE_PLAYER_ONLY is incompatible with online/netplay builds")
+endif()
 
 if(PIKMIN_BUILD_TESTS)
     enable_testing()
@@ -174,7 +203,21 @@ VERSION_GPIP01_00 (PAL), VERSION_GPIJ01_01, VERSION_GPIJ01_02")
 # que compila.
 add_compile_options("-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=")
 
+if(VITA)
+    set(_pikmin_arena_default 32)
+else()
+    set(_pikmin_arena_default 256)
+endif()
+set(PIKMIN_OS_ARENA_MIB "${_pikmin_arena_default}" CACHE STRING
+    "Simulated GameCube arena in MiB; Vita budget is experimental")
+if(NOT PIKMIN_OS_ARENA_MIB MATCHES "^[1-9][0-9]*$"
+   OR PIKMIN_OS_ARENA_MIB LESS 24 OR PIKMIN_OS_ARENA_MIB GREATER 256)
+    message(FATAL_ERROR "PIKMIN_OS_ARENA_MIB must be an integer from 24 to 256")
+endif()
+
 add_compile_definitions(
+    PIKI_OS_ARENA_MIB=${PIKMIN_OS_ARENA_MIB}
+    PIKI_SINGLE_PLAYER_ONLY=$<BOOL:${PIKMIN_SINGLE_PLAYER_ONLY}>
     PIKI_PC_PORT=1
     ${PIKMIN_GAME_VERSION}
     DTK_CONFIG_NONMATCHING=1
@@ -202,7 +245,7 @@ add_compile_definitions(
 # Librerías compartidas con el editor de mapas (raíz del repo).
 set(NECTAR_LIBS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../libs")
 
-if(NOT TARGET nectar_paths)
+if(NOT PIKMIN_VITA_CORE_ONLY AND NOT TARGET nectar_paths)
     add_subdirectory("${NECTAR_LIBS_DIR}/nectar_paths" "${CMAKE_BINARY_DIR}/nectar_paths")
 endif()
 
@@ -226,7 +269,34 @@ include_directories(
 # En Android SDL2 se compila en el mismo árbol: el proyecto Gradle
 # (android/app/jni/CMakeLists.txt) añade las fuentes de SDL2 antes que este
 # fichero y deja el target `SDL2` definido, con sus cabeceras como interfaz.
-if (ANDROID)
+if (PIKMIN_VITA_CORE_ONLY)
+    # Only SDL declarations are needed by the legacy archive. Do not resolve
+    # host SDL/OpenGL packages during cross compilation. The bundled headers
+    # use their minimal config here; no SDL implementation is linked.
+    set(_sdl2_headers "${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL2-android/include")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include")
+    file(CREATE_LINK "${_sdl2_headers}"
+         "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include/SDL2" SYMBOLIC)
+    set(SDL2_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include" "${_sdl2_headers}")
+elseif (VITA)
+    find_package(SDL2 CONFIG REQUIRED)
+    if(NOT TARGET SDL2::SDL2-static)
+        message(FATAL_ERROR "Vita requires the static SDL2 vitaGL build (scripts/build-vita-deps.sh)")
+    endif()
+    set(SDL2_LIBRARIES SDL2::SDL2-static)
+    # SDL's Vita export lists two static stubs before their users. Keep them
+    # after vitaGL/vitashark and add vitashark's extension dependency.
+    get_target_property(_vita_sdl_links SDL2::SDL2-static INTERFACE_LINK_LIBRARIES)
+    list(FILTER _vita_sdl_links EXCLUDE REGEX "SceShaccCg_stub|SceKernelDmacMgr_stub")
+    list(APPEND _vita_sdl_links SceShaccCgExt taihen_stub SceShaccCg_stub SceKernelDmacMgr_stub)
+    set_property(TARGET SDL2::SDL2-static PROPERTY INTERFACE_LINK_LIBRARIES "${_vita_sdl_links}")
+    set(SDL2_INCLUDE_DIRS "${VITASDK}/arm-vita-eabi/include/SDL2")
+    file(STRINGS "${SDL2_INCLUDE_DIRS}/SDL_config.h" _vita_sdl_vgl
+        REGEX "^#define SDL_VIDEO_VITA_VGL 1")
+    if(NOT _vita_sdl_vgl)
+        message(FATAL_ERROR "SDL2 lacks the vitaGL backend; run scripts/build-vita-deps.sh")
+    endif()
+elseif (ANDROID)
     if (NOT TARGET SDL2)
         message(FATAL_ERROR "Android: SDL2 must be added as a target before this project (see android/app/jni/CMakeLists.txt)")
     endif()
@@ -280,7 +350,7 @@ endif()
 
 # OpenGL de escritorio no existe en Android: allí el contexto es GLES/EGL y lo
 # aporta el NDK (fase 3 del plan de Android).
-if (NOT WIN32 AND NOT ANDROID)
+if (NOT WIN32 AND NOT ANDROID AND NOT VITA AND NOT PIKMIN_VITA_CORE_ONLY)
     find_package(OpenGL REQUIRED)
 endif()
 
@@ -412,6 +482,19 @@ set(PC_PORT_SOURCES
     pc_port/dolphin_stubs/jaudio_hw_stubs.cpp
     pc_port/dolphin_stubs/misc_stubs.cpp
 )
+if(VITA)
+    list(REMOVE_ITEM PC_PORT_SOURCES
+        pc_port/dolphin_stubs/pc_host_readable_os.cpp
+        pc_port/pc_discord.cpp pc_port/pc_livesplit.cpp)
+    list(APPEND PC_PORT_SOURCES
+        pc_port/vita/pc_vita_runtime.cpp
+        pc_port/vita/pc_vita_desktop_stubs.cpp
+        pc_port/vita/pc_host_readable_vita.cpp)
+endif()
+if(PIKMIN_SINGLE_PLAYER_ONLY)
+    list(REMOVE_ITEM PC_PORT_SOURCES pc_port/pc_coop.cpp)
+    list(APPEND PC_PORT_SOURCES pc_port/vita/pc_coop_singleplayer.cpp)
+endif()
 if (ANDROID)
     list(APPEND PC_PORT_SOURCES
         pc_port/android/pc_android.cpp
@@ -611,6 +694,19 @@ add_library(${NECTAR_LEGACY} STATIC
     ${JAUDIO_TARGET_SOURCES}
 )
 target_compile_options(${NECTAR_LEGACY} PRIVATE ${LEGACY_COMPILE_OPTIONS})
+if(PIKMIN_VITA_CORE_ONLY)
+    # Compile the actual OS implementation as well, so Vita's libc/thread
+    # declarations and the smaller arena are checked, not just game headers.
+    add_library(pikmin_vita_os STATIC
+        pc_port/dolphin_stubs/os_stubs.cpp
+        pc_port/vita/pc_host_readable_vita.cpp)
+    if(PIKMIN_SINGLE_PLAYER_ONLY)
+        target_sources(pikmin_vita_os PRIVATE pc_port/vita/pc_coop_singleplayer.cpp)
+    endif()
+    target_compile_options(pikmin_vita_os PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    message(STATUS "Vita milestone: game logic and OS archives only; renderer/runtime not linked")
+    return()
+endif()
 
 # Native executable with strict flags. En Android es una biblioteca
 # compartida que carga la actividad Java de SDL (libnectar.so, con SDL_main
@@ -691,7 +787,9 @@ endif()
 # -ftrivial-auto-var-init=zero removes uninitialised-stack garbage from the
 # decompiled code. -march=native would make two machines run different code,
 # so the two options exclude each other.
-option(PIKMIN_NETPLAY_BUILD "Deterministic netplay build" OFF)
+if(PIKMIN_SINGLE_PLAYER_ONLY AND PIKMIN_NETPLAY_BUILD)
+    message(FATAL_ERROR "PIKMIN_SINGLE_PLAYER_ONLY is incompatible with PIKMIN_NETPLAY_BUILD")
+endif()
 if(PIKMIN_NETPLAY_BUILD AND PIKMIN_NATIVE_OPTIMIZE)
     message(FATAL_ERROR "PIKMIN_NETPLAY_BUILD cannot be combined with PIKMIN_NATIVE_OPTIMIZE")
 endif()
@@ -879,6 +977,9 @@ if (WIN32)
     # proyecto declara SDL_MAIN_HANDLED y define su propio main. Enlazarlo deja
     # SDL_main sin definir en todos los ejecutables.
     target_link_libraries(${NECTAR_GAME} PRIVATE ${SDL2_LIBRARIES} opengl32 comdlg32 ws2_32)
+elseif (VITA)
+    target_link_libraries(${NECTAR_GAME} PRIVATE m ${SDL2_LIBRARIES}
+        pthread SceSysmem_stub SceKernelThreadMgr_stub)
 elseif (ANDROID)
     # En Android no hay X11 ni OpenGL de escritorio. GLESv3 y EGL vienen del
     # NDK; log y android los necesita la capa de plataforma (logcat, ciclo de
@@ -901,7 +1002,7 @@ endif()
 # compiled out on Windows anyway (glibc's execinfo.h has no equivalent there).
 # En Android tampoco: el binario será una biblioteca compartida, no un
 # ejecutable con símbolos exportados.
-if (NOT WIN32 AND NOT ANDROID)
+if (NOT WIN32 AND NOT ANDROID AND NOT VITA)
     target_link_options(${NECTAR_GAME} PRIVATE -rdynamic)
 elseif (WIN32)
     # SDL2's CMake package links -mwindows, which hides the console and with it
@@ -916,7 +1017,7 @@ set_target_properties(${NECTAR_GAME} PROPERTIES
     OUTPUT_NAME "${NECTAR_OUTPUT_NAME}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
-if (NOT ANDROID AND NOT WIN32)
+if (NOT ANDROID AND NOT WIN32 AND NOT VITA)
     add_custom_command(TARGET ${NECTAR_GAME} POST_BUILD
         COMMAND /bin/chmod 775 "$<TARGET_FILE:${NECTAR_GAME}>"
         COMMENT "Ensuring the native Pikmin executable is runnable")
@@ -1308,6 +1409,21 @@ if(PIKMIN_BUILD_TESTS)
     target_compile_options(pc_menu_repeat_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME pc_menu_repeat_test COMMAND pc_menu_repeat_test)
 
+    if(PIKMIN_SINGLE_PLAYER_ONLY)
+        add_executable(pc_singleplayer_test
+            pc_port/vita/pc_coop_singleplayer.cpp pc_port/vita/pc_singleplayer_test.cpp)
+        target_include_directories(pc_singleplayer_test PRIVATE pc_port)
+        add_test(NAME pc_singleplayer_test COMMAND pc_singleplayer_test)
+    endif()
+
+    # Vita's mapped-memory bounds can be checked on the host with a syscall double.
+    add_executable(pc_host_readable_vita_test
+        pc_port/vita/pc_host_readable_vita.cpp
+        pc_port/vita/pc_host_readable_vita_test.cpp)
+    target_include_directories(pc_host_readable_vita_test PRIVATE pc_port/vita/tests pc_port)
+    target_compile_options(pc_host_readable_vita_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_host_readable_vita_test COMMAND pc_host_readable_vita_test)
+
     # Readable host memory for the GX bounds (issue #45: macOS has no /proc)
     add_executable(pc_host_readable_test
         pc_port/dolphin_stubs/pc_host_readable_test.cpp
@@ -1518,12 +1634,14 @@ if(PIKMIN_BUILD_TESTS)
     target_include_directories(pc_netplay_input_sel_test PRIVATE pc_port)
     target_compile_options(pc_netplay_input_sel_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME pc_netplay_input_sel_test COMMAND pc_netplay_input_sel_test)
-    add_executable(pc_coop_switch_test
-        pc_port/netplay/pc_coop_switch_test.cpp
-        pc_port/netplay/pc_coop_switch.cpp)
-    target_include_directories(pc_coop_switch_test PRIVATE pc_port)
-    target_compile_options(pc_coop_switch_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-    add_test(NAME pc_coop_switch_test COMMAND pc_coop_switch_test)
+    if(NOT PIKMIN_SINGLE_PLAYER_ONLY)
+        add_executable(pc_coop_switch_test
+            pc_port/netplay/pc_coop_switch_test.cpp
+            pc_port/netplay/pc_coop_switch.cpp)
+        target_include_directories(pc_coop_switch_test PRIVATE pc_port)
+        target_compile_options(pc_coop_switch_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+        add_test(NAME pc_coop_switch_test COMMAND pc_coop_switch_test)
+    endif()
 
     # PKNI input-file format, yaw quantisation and the per-tick yaw slots.
     add_executable(pc_input_log_test
@@ -1624,4 +1742,13 @@ endif()
 # VRM u OBJ. Comparte con el editor de mapas la ImGui, OpenGL y nectar_assets.
 if (NECTAR_BUILD_MODELMAKER AND NOT ANDROID)
     add_subdirectory("${NECTAR_LIBS_DIR}/../tools/modelmaker" "${CMAKE_CURRENT_BINARY_DIR}/modelmaker")
+endif()
+
+# Packaging is opt-in with the experimental full Vita target. No assets are
+# embedded: the runtime reads the user's extracted data from ux0:data.
+if(VITA AND PIKMIN_VITA_EXPERIMENTAL_GAME)
+    include("${VITASDK}/share/vita.cmake")
+    vita_create_self(eboot.bin ${NECTAR_GAME})
+    vita_create_vpk(pikmin1-vita-experimental.vpk NECTR0001 eboot.bin
+        VERSION 00.01 NAME "Nectar Vita Dev")
 endif()

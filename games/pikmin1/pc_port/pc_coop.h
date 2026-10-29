@@ -1,13 +1,21 @@
 #ifndef PC_COOP_H
 #define PC_COOP_H
 
+#ifndef PIKI_SINGLE_PLAYER_ONLY
+#define PIKI_SINGLE_PLAYER_ONLY 0
+#endif
+
 /* Modo cooperativo local (PLAN_COOP): 2 Olimar, pantalla partida, P2 con
    mando físico. Se elige en el título al pulsar "Empezar", antes del slot.
    Estado de sesión: no se guarda en la partida. */
 
 /// Lo que va a ser la próxima partida que arranque. Lo fija el selector 1P/2P.
 void pc_coop_set_pending(bool on);
+#if PIKI_SINGLE_PLAYER_ONLY
+inline bool pc_coop_pending(void) { return false; }
+#else
 bool pc_coop_pending(void);
+#endif
 /// El título ya eligió 1P/Co-op (menú principal): el selector 1P/2P previo
 /// al slot se salta. Se consume al leerlo.
 void pc_coop_set_chosen_at_title(bool on);
@@ -74,14 +82,26 @@ bool pc_coop_p2_tinted(void);
 /// Modo VS (1 contra 1): elegido en el menú principal. Va siempre con el
 /// cooperativo (dos capitanes) y activa flowCont.mIsVersusMode en la partida.
 void pc_vs_set_pending(bool on);
+#if PIKI_SINGLE_PLAYER_ONLY
+inline bool pc_vs_pending(void) { return false; }
+#else
 bool pc_vs_pending(void);
+#endif
 /// True mientras la partida en curso es un VS.
+#if PIKI_SINGLE_PLAYER_ONLY
+inline bool pc_vs_active(void) { return false; }
+#else
 bool pc_vs_active(void);
+#endif
 
 /// Aplica la elección pendiente a la partida que empieza (GameCoreSection).
 void pc_coop_begin_run(void);
 /// True mientras la partida en curso es cooperativa.
+#if PIKI_SINGLE_PLAYER_ONLY
+inline bool pc_coop_active(void) { return false; }
+#else
 bool pc_coop_active(void);
+#endif
 void pc_coop_end_run(void);
 
 /// Split screen draws the world once per view in the same tick. Sim work that
