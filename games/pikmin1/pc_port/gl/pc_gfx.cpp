@@ -4782,6 +4782,73 @@ void pc_gfx_end_swap_framebuffer(unsigned int bound) {
     if (glBindFramebuffer_ptr) glBindFramebuffer_ptr(GL_FRAMEBUFFER, GLuint(bound));
 }
 
+#ifdef __vita__
+// Native Cg diagnostic: independent of GX shaders, uniforms and textures.
+static void vita_present_probe() {
+    static bool attempted = false;
+    static GLuint program = 0, buffer = 0;
+    if (!attempted) {
+        attempted = true;
+        const char* sources[] = {
+            "float4 main(float3 aPos : POSITION) : POSITION { return float4(aPos, 1.0); }",
+            "float4 main() : COLOR { return float4(1.0, 0.0, 1.0, 1.0); }"
+        };
+        GLuint shaders[2] = {};
+        for (int i = 0; i < 2; ++i) {
+            shaders[i] = glCreateShader_ptr(i == 0 ? 0x890E : 0x890F);
+            glShaderSource_ptr(shaders[i], 1, &sources[i], nullptr);
+            glCompileShader_ptr(shaders[i]);
+            GLint ok = 0;
+            glGetShaderiv_ptr(shaders[i], GL_COMPILE_STATUS, &ok);
+            printf("[Vita Cg probe] stage %d compile: %d\n", i, int(ok));
+            if (!ok) {
+                char log[2048] = {};
+                glGetShaderInfoLog_ptr(shaders[i], sizeof log, nullptr, log);
+                printf("[Vita Cg probe] %s\n", log);
+                for (GLuint sh : shaders) if (sh) glDeleteShader_ptr(sh);
+                fflush(stdout);
+                return;
+            }
+        }
+        program = glCreateProgram_ptr();
+        for (GLuint sh : shaders) glAttachShader_ptr(program, sh);
+        glBindAttribLocation_ptr(program, 0, "aPos");
+        glLinkProgram_ptr(program);
+        GLint ok = 0;
+        glGetProgramiv_ptr(program, GL_LINK_STATUS, &ok);
+        for (GLuint sh : shaders) glDeleteShader_ptr(sh);
+        printf("[Vita Cg probe] link: %d; look for pink triangle at top right\n", int(ok));
+        fflush(stdout);
+        if (!ok) { glDeleteProgram_ptr(program); program = 0; return; }
+        const float vertices[] = {0.65f,0.65f,0, 0.95f,0.65f,0, 0.95f,0.95f,0};
+        glGenBuffers_ptr(1, &buffer);
+        glBindBuffer_ptr(GL_ARRAY_BUFFER, buffer);
+        glBufferData_ptr(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
+    }
+    if (!program) return;
+    GLint viewport[4]; glGetIntegerv(GL_VIEWPORT, viewport);
+    const GLenum caps[] = {GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST};
+    GLboolean enabled[4];
+    for (int i = 0; i < 4; ++i) { enabled[i] = glIsEnabled(caps[i]); glDisable(caps[i]); }
+    glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, sDrawableWidth, sDrawableHeight);
+    glUseProgram_ptr(program);
+    glBindBuffer_ptr(GL_ARRAY_BUFFER, buffer);
+    glEnableVertexAttribArray_ptr(0);
+    glVertexAttribPointer_ptr(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    gl_error_checkpoint("native Cg triangle draw");
+    glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
+    setup_vertex_attribs();
+    glUseProgram_ptr(0);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    for (int i = 0; i < 4; ++i) if (enabled[i]) glEnable(caps[i]);
+    gl_program_cache_invalidate();
+    invalidate_uniform_cache();
+    invalidate_gl_pipeline_guards();
+}
+#endif
+
 void pc_gfx_present(void) {
     if (pc_gfx_null_skip()) return;
     if (!sNullDoomedTextures.empty()) {
@@ -4791,6 +4858,9 @@ void pc_gfx_present(void) {
         sNullDoomedTextures.clear();
     }
     pc_gfx_flush_batch();
+#ifdef __vita__
+    vita_present_probe();
+#endif
 #ifdef GL_TIME_ELAPSED
     if (sPerfGpuSceneActive) {
         glEndQuery_ptr(GL_TIME_ELAPSED);
