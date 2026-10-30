@@ -81,5 +81,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: pikmin1-vita-experimental-unvalidated
-          path: build-vita-game/pikmin1-vita-experimental.vpk
+          path: |
+            build-vita-game/pikmin1-vita-experimental.vpk
+            build-vita-game/bin/nectar
+            build-vita-game/pikmin_pc.velf
           if-no-files-found: error
