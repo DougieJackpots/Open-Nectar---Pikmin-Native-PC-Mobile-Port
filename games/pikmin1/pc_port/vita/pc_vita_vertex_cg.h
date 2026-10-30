@@ -1,7 +1,7 @@
 #pragma once
 // Native Vita interface adapted from Brendonm17/Open-Nectar-Vita v0.0.1.
-// Keep our 21-slot palette and CPU/pretransformed paths. Matrix uploads are
-// converted to explicit rows on the CPU; all transforms use dot products.
+// Positions arrive in homogeneous clip space and view space from the CPU.
+// The 21-slot normal palette is retained for GPU lighting and texture generation.
 // ATTR0..7 match pc_gfx.cpp. Seven interpolators carry final GX raster
 // colours, four UV sets and fog; no desktop GLSL translation is involved.
 static const char* kPcVitaVertexCg = R"CG(
@@ -52,19 +52,19 @@ float2 gen_tc(int mode, float4 M[2], float4 viewPos, float3 nrm, float2 uvIn,
 }
 
 void main(
-    float3 aPos       : ATTR0,
+    float4 aPos       : ATTR0,
     float4 aColor     : ATTR1,
     float3 aNormal    : ATTR2,
     float2 aTexCoord0 : ATTR3,
     float2 aTexCoord1 : ATTR4,
     float2 aTexCoord2 : ATTR5,
     float2 aTexCoord3 : ATTR6,
-    float  aMatrixSlot    : ATTR7,   
+    float4 aMatrixSlot : ATTR7, // view.xyz and normal-palette slot
 
-    uniform float4 uProjRows[4],
+
     
     
-    uniform float4 uPosPalette[63],
+
     uniform float4 uNrmPalette[63],
 
     
@@ -115,12 +115,10 @@ void main(
     out float2 vTexCoord3 : TEXCOORD3
 ) {
     
-    int mi = int(clamp(floor(aMatrixSlot + 0.5), 0.0, 20.0)) * 3;
-    float4 p4 = float4(aPos, 1.0);
-    float4 worldPos = float4(dot(uPosPalette[mi], p4), dot(uPosPalette[mi + 1], p4), dot(uPosPalette[mi + 2], p4), 1.0);
-    out_position = float4(dot(uProjRows[0], worldPos), dot(uProjRows[1], worldPos),
-                          dot(uProjRows[2], worldPos), dot(uProjRows[3], worldPos));
-    
+    int mi = int(clamp(floor(aMatrixSlot.w + 0.5), 0.0, 20.0)) * 3;
+    float4 worldPos = float4(aMatrixSlot.xyz, 1.0);
+    out_position = aPos;
+
     float fogSpan = uFogParams.y - uFogParams.x;
     vFog = abs(fogSpan) < 1e-6 ? 0.0 : (-worldPos.z - uFogParams.x) / fogSpan;
     float3 N = normalize(float3(dot(uNrmPalette[mi].xyz, aNormal), dot(uNrmPalette[mi + 1].xyz, aNormal), dot(uNrmPalette[mi + 2].xyz, aNormal)));

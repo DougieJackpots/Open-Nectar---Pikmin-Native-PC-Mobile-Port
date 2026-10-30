@@ -51,6 +51,7 @@ void pc_netplay_load_keepalive(int site);
 #include "pc_opengl.h"
 #ifdef __vita__
 #include "../vita/pc_vita_glsl.h"
+#include "../vita/pc_vita_transform.h"
 #endif
 #ifdef __vita__
 // Keep the native extension declaration separate from desktop GL headers.
@@ -610,8 +611,16 @@ struct Vertex {
     // them in every streamed vertex only inflated the upload by 32 bytes.
     float tex[4][2];
     float matrixSlot;
+#ifdef __vita__
+    float clip[4];
+    float viewAndSlot[4];
+#endif
 };
+#ifdef __vita__
+static_assert(sizeof(Vertex) == 108, "Vita stream includes homogeneous position and view coordinates");
+#else
 static_assert(sizeof(Vertex) == 76, "Keep the streamed GX vertex compact");
+#endif
 
 // Decoded display-list geometry is immutable for the model paths that use a
 // PNMTXIDX palette. Keep raw vertices so repeated draws can skip GX parsing.
@@ -3079,7 +3088,11 @@ static void depth_tex_image(int width, int height) {
 static void setup_vertex_attribs() {
     gl_error_checkpoint("before vertex attribute setup");
     glEnableVertexAttribArray_ptr(sAttrPos);
+#ifdef __vita__
+    glVertexAttribPointer_ptr(sAttrPos, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, clip));
+#else
     glVertexAttribPointer_ptr(sAttrPos, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, x));
+#endif
     if (sAttrNormal >= 0) {
         glEnableVertexAttribArray_ptr(sAttrNormal);
         glVertexAttribPointer_ptr(sAttrNormal, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, nx));
@@ -3087,8 +3100,13 @@ static void setup_vertex_attribs() {
     glEnableVertexAttribArray_ptr(sAttrColor);
     glVertexAttribPointer_ptr(sAttrColor, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, r));
     glEnableVertexAttribArray_ptr(kAttrMatrixSlotIndex);
+#ifdef __vita__
+    glVertexAttribPointer_ptr(kAttrMatrixSlotIndex, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                              (void*)offsetof(Vertex, viewAndSlot));
+#else
     glVertexAttribPointer_ptr(kAttrMatrixSlotIndex, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex),
                               (void*)offsetof(Vertex, matrixSlot));
+#endif
     for (int i = 0; i < 8; ++i) {
         if (sAttrTexCoord[i] >= 0) {
             glEnableVertexAttribArray_ptr(sAttrTexCoord[i]);
@@ -3435,6 +3453,9 @@ void pc_gfx_init(void) {
     printf("[PC Port] OpenGL ES backend and GLSL ES shaders initialized successfully\n");
 #else
     printf("[PC Port] OpenGL backend and GLSL shaders initialized successfully\n");
+#ifdef __vita__
+    printf("[Vita] CPU homogeneous transforms; native materials; bounded stream draws v3\n");
+#endif
 #endif
 }
 
@@ -7671,7 +7692,25 @@ static void append_primitive(const std::vector<Vertex>& v, GXPrimitive type, std
     }
 }
 
-static void append_primitive_to_batch() { append_primitive(sVertexStream, sCurrentPrimType, sBatchVerts); }
+static void append_primitive_to_batch() {
+#ifdef __vita__
+    const size_t first = sBatchVerts.size();
+#endif
+    append_primitive(sVertexStream, sCurrentPrimType, sBatchVerts);
+#ifdef __vita__
+    // Snapshot transforms while this primitive's GX matrices are current,
+    // not at flush time, when the next primitive may have changed them.
+    for (size_t i = first; i < sBatchVerts.size(); ++i) {
+        Vertex& v = sBatchVerts[i];
+        const int slot = sVertexUsesPalette ? std::clamp(int(v.matrixSlot + 0.5f), 0, 20) : 0;
+        const float* modelView = sVertexUsesPalette ? sPosMatrix[slot * 3]
+                              : sVerticesPretransformed ? nullptr : sPosMatrix[sCurrentPosMtxId];
+        const float position[3] = {v.x, v.y, v.z};
+        pc_vita_transform(position, modelView, sProjMatrix, v.viewAndSlot, v.clip);
+        v.viewAndSlot[3] = float(slot); // Normal palette only; clip.w is preserved separately.
+    }
+#endif
+}
 
 // PIKMIN_BATCH=0 draws every primitive on its own, exactly as before this
 // change. It is the A/B for the failure mode this design can produce: a
@@ -7799,6 +7838,9 @@ void pc_gfx_flush_batch(void) {
     const bool profiling = pc_tick_profiler_enabled();
     const double t0 = profiling ? submit_clock_ms() : 0.0;
 
+#ifdef __vita__
+    glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
+#endif
     const size_t vertexBytes = sBatchVerts.size() * sizeof(Vertex);
     const bool mapping = vbo_upload_by_mapping() && glMapBufferRange_ptr && glUnmapBuffer_ptr;
     if (mapping) {
@@ -7858,7 +7900,18 @@ void pc_gfx_flush_batch(void) {
     // restore this one. Bind it here too, so the batch never depends on that.
     // sStreamVAO is 0 (the default VAO) everywhere except macOS.
     if (sStreamVAO != 0 && glBindVertexArray_ptr) glBindVertexArray_ptr(sStreamVAO);
+#ifdef __vita__
+    // Reassert the stream after clear/present and auxiliary GL passes. Keep
+    // offsets local to one vertex; large ring offsets go through firstVertex.
+    setup_vertex_attribs();
+    constexpr GLsizei maxDrawVertices = 0xC000; // divisible by both 2 and 3
+    for (GLsizei start = 0; start < (GLsizei)sBatchVerts.size(); start += maxDrawVertices) {
+        const GLsizei count = std::min(maxDrawVertices, (GLsizei)sBatchVerts.size() - start);
+        glDrawArrays(sBatchMode, firstVertex + start, count);
+    }
+#else
     glDrawArrays(sBatchMode, firstVertex, (GLsizei)sBatchVerts.size());
+#endif
     gl_error_checkpoint("batch draw");
 
     if (profiling) {

@@ -1,5 +1,6 @@
 #include "pc_vita_tev_cg.h"
 #include "pc_vita_vertex_cg.h"
+#include "pc_vita_transform.h"
 #include "../gl/pc_uniform_location.h"
 #include "../gl/pc_matrix_rows.h"
 #include <cassert>
@@ -66,9 +67,26 @@ int main() {
     assert(nrows[0] == 1 && nrows[1] == 4 && nrows[2] == 7 && nrows[3] == 0);
     assert(nrows[8] == 3 && nrows[9] == 6 && nrows[10] == 9 && nrows[11] == 0);
     const std::string vertex = kPcVitaVertexCg;
-    assert(vertex.find("dot(uProjRows[0], worldPos)") != std::string::npos);
-    assert(vertex.find("float4x4") == std::string::npos);
-    assert(vertex.find("uPosPalette[63]") != std::string::npos);
-    assert(vertex.find("dot(uPosPalette[mi], p4)") != std::string::npos);
+    assert(vertex.find("out_position = aPos;") != std::string::npos);
+    assert(vertex.find("float4 aPos") != std::string::npos);
+    assert(vertex.find("uPosPalette") == std::string::npos);
+    assert(vertex.find("uProjRows") == std::string::npos);
+    // Perspective keeps w separate from the normal-palette slot. Translation
+    // must happen exactly once for raw, palette-selected and pretransformed vertices.
+    const float projection[16] = {2,0,0,0, 0,3,0,0, 0,0,-1,-1, 0,0,-2,0};
+    const float model[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 4,5,-10,1};
+    const float input[3] = {1,2,3};
+    float view[4], clip[4], alreadyView[4], alreadyClip[4];
+    pc_vita_transform(input, model, projection, view, clip);
+    assert(view[0] == 5 && view[1] == 7 && view[2] == -7);
+    assert(clip[0] == 10 && clip[1] == 21 && clip[2] == 5 && clip[3] == 7);
+    pc_vita_transform(view, nullptr, projection, alreadyView, alreadyClip);
+    for (int i = 0; i < 4; ++i) assert(alreadyClip[i] == clip[i]);
+    const float behind[3] = {1,2,3};
+    pc_vita_transform(behind, nullptr, projection, view, clip);
+    assert(clip[3] == -3); // No CPU perspective divide or behind-eye clamping.
+    const float ortho[16] = {2,0,0,0, 0,3,0,0, 0,0,1,0, -1,-1,0,1};
+    pc_vita_transform(input, nullptr, ortho, view, clip);
+    assert(clip[0] == 1 && clip[1] == 5 && clip[2] == 3 && clip[3] == 1);
     std::puts("Native Cg generator and matrix contract checks passed");
 }
