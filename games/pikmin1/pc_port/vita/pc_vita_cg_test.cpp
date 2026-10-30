@@ -1,6 +1,7 @@
 #include "pc_vita_tev_cg.h"
 #include "pc_vita_vertex_cg.h"
 #include "../gl/pc_uniform_location.h"
+#include "../gl/pc_matrix_rows.h"
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -53,10 +54,21 @@ int main() {
     for (int c=0; c<4; ++c)
         for (int r=0; r<4; ++r) cgRowVector[c] += pos[r] * glColumnMajor[r*4+c];
     assert(cgRowVector[0] == 7 && cgRowVector[1] == 12 && cgRowVector[2] == 19 && cgRowVector[3] == 1);
+    float rows[16];
+    pc_matrix4_rows(glColumnMajor, rows);
+    for (int r = 0; r < 4; ++r) {
+        float result = 0;
+        for (int c = 0; c < 4; ++c) result += rows[r * 4 + c] * pos[c];
+        assert(result == cgRowVector[r]);
+    }
+    const float normal[9] = {1,2,3,4,5,6,7,8,9};
+    float nrows[12]; pc_matrix3_rows(normal, nrows);
+    assert(nrows[0] == 1 && nrows[1] == 4 && nrows[2] == 7 && nrows[3] == 0);
+    assert(nrows[8] == 3 && nrows[9] == 6 && nrows[10] == 9 && nrows[11] == 0);
     const std::string vertex = kPcVitaVertexCg;
-    assert(vertex.find("mul(worldPos, uProjMtx)") != std::string::npos);
-    assert(vertex.find("mul(float4(aPos, 1.0), uPosMtx)") != std::string::npos);
+    assert(vertex.find("dot(uProjRows[0], worldPos)") != std::string::npos);
+    assert(vertex.find("float4x4") == std::string::npos);
     assert(vertex.find("uPosPalette[63]") != std::string::npos);
-    assert(vertex.find("uUsePalette == 0") != std::string::npos);
+    assert(vertex.find("dot(uPosPalette[mi], p4)") != std::string::npos);
     std::puts("Native Cg generator and matrix contract checks passed");
 }

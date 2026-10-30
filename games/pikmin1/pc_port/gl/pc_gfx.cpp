@@ -4,6 +4,7 @@
 #endif
 #include "pc_gfx.h"
 #include "pc_uniform_location.h"
+#include "pc_matrix_rows.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -2754,7 +2755,11 @@ static void query_program_locations(GLuint program, ProgramLocations& out) {
     out = ProgramLocations();
     invalidate_uniform_cache();
     drop_uniform_cache(program);
+    #ifdef __vita__
+    out.projMtx = query_gx_uniform(program, "uProjRows[0]");
+#else
     out.projMtx = query_gx_uniform(program, "uProjMtx");
+#endif
     out.posMtx = query_gx_uniform(program, "uPosMtx");
     out.usePalette = query_gx_uniform(program, "uUsePalette");
     out.posPalette = query_gx_uniform(program, "uPosPalette[0]");
@@ -2821,7 +2826,11 @@ static void query_program_locations(GLuint program, ProgramLocations& out) {
         snprintf(name, sizeof(name), "aTexCoord%d", i);
         snprintf(name, sizeof(name), "uTcMode[%d]", i);
         out.tcMode[i] = query_gx_uniform(program, name);
+        #ifdef __vita__
+        snprintf(name, sizeof(name), "uTcRows_%d", i);
+#else
         snprintf(name, sizeof(name), "uTcMtx[%d]", i);
+#endif
         out.tcMtx[i] = query_gx_uniform(program, name);
     }
     out.nrmMtx = query_gx_uniform(program, "uNrmMtx");
@@ -2887,9 +2896,7 @@ static void query_program_locations(GLuint program, ProgramLocations& out) {
                unsigned(program), int(out.projMtx), int(out.posMtx), int(out.posPalette));
         for (int i = 0; i < 8; ++i) {
             if (!uniform_location_valid(out.tex[i])) continue;
-            GLint actual = -1;
-            if (glGetUniformiv_ptr) glGetUniformiv_ptr(program, out.tex[i], &actual);
-            printf(" tex%d(loc=%d,unit=%d)", i, int(out.tex[i]), int(actual));
+            printf(" tex%d(loc=%d,assigned=%d)", i, int(out.tex[i]), i);
         }
         printf("\n");
         fflush(stdout);
@@ -3130,7 +3137,7 @@ void pc_gfx_init(void) {
     // by our independently generated material programs.
     vglSetSemanticBindingMode(kVitaGlobalShaderSemantics);
     printf("[Vita] Immediate shader compilation enabled (global semantics).\n");
-    printf("[Vita] Native Cg renderer v1: GX materials, textures, vertex lighting and fog.\n");
+    printf("[Vita] Native Cg renderer v2: explicit transform rows and unified palettes.\n");
     fflush(stdout);
 #endif
     state_touched();
@@ -7976,7 +7983,9 @@ static void upload_matrix_palette(int slots) {
     }
     static uint64_t lastFingerprint = 0;
     static int lastSlots = 0;
+#ifndef __vita__
     if (fp == lastFingerprint && slots <= lastSlots) return;
+#endif
     lastFingerprint = fp;
     lastSlots = slots;
     float pos[kPaletteSlots * 3][4];
@@ -8008,7 +8017,14 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     if (profilingSubmit) sSubmitProgramMs += submit_clock_ms() - stateT0;
     filesel_debug_log_draw();
 
+#ifdef __vita__
+    float projRows[16];
+    pc_matrix4_rows(sProjMatrix, projRows);
+    if (uniform_location_valid(sLoc.projMtx)) glUniform4fv_ptr(sLoc.projMtx, 4, projRows);
+    check_uniform_write(sLoc.projMtx, "projection rows");
+#else
     glUniformMatrix4fv_ptr(sLoc.projMtx, 1, GL_FALSE, sProjMatrix);
+#endif
     static const float identity[16] = {
         1, 0, 0, 0,
         0, 1, 0, 0,
@@ -8019,6 +8035,18 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
                           sVerticesPretransformed ? identity : sPosMatrix[sCurrentPosMtxId]);
     if (uniform_location_valid(sLoc.usePalette)) glUniform1i_ptr(sLoc.usePalette, sVertexUsesPalette ? 1 : 0);
     if (sVertexUsesPalette) upload_matrix_palette(sPaletteSlotsNeeded);
+#ifdef __vita__
+    else {
+        // All native draws use palette rows, including pretransformed UI.
+        static const float identityNrm[9] = {1,0,0, 0,1,0, 0,0,1};
+        float posRows[12], nrmRows[12];
+        pc_matrix4_rows(sVerticesPretransformed ? identity : sPosMatrix[sCurrentPosMtxId], posRows, 3);
+        pc_matrix3_rows(sVerticesPretransformed ? identityNrm : sNrmMatrix[sCurrentPosMtxId], nrmRows);
+        if (uniform_location_valid(sLoc.posPalette)) glUniform4fv_ptr(sLoc.posPalette, 3, posRows);
+        if (uniform_location_valid(sLoc.nrmPalette)) glUniform4fv_ptr(sLoc.nrmPalette, 3, nrmRows);
+        check_uniform_write(sLoc.posPalette, "palette slot zero");
+    }
+#endif
     glUniform4f_ptr(sLoc.materialColor, sChannels[0].matColor[0], sChannels[0].matColor[1],
                     sChannels[0].matColor[2], sChannels[0].matColor[3]);
     glUniform1i_ptr(sLoc.useMaterialRgb, sChannels[0].matSrc == GX_SRC_REG ? 1 : 0);
@@ -8307,6 +8335,50 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             lastActiveMap = map;
         }
     }
+#ifdef __vita__
+    static GLuint checkedPrograms[12] = {};
+    static unsigned checkedCount = 0;
+    bool checked = false;
+    for (unsigned i = 0; i < checkedCount; ++i) checked |= checkedPrograms[i] == sCurrentProgram;
+    if (!checked && checkedCount < 12) {
+        checkedPrograms[checkedCount++] = sCurrentProgram;
+        printf("[Vita textures] program=%u:", unsigned(sCurrentProgram));
+        for (int map = 0; map < 8; ++map) {
+            if (!usedTextureMaps[map]) continue;
+            glActiveTexture_ptr(GL_TEXTURE0 + map);
+            GLint actual = 0;
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &actual);
+            const GLuint wanted = sHasActiveTextures[map] ? sActiveGLTextures[map] : 0;
+            printf(" map%d(expected=%u,bound=%u)", map, unsigned(wanted), unsigned(actual));
+        }
+        printf("\n");
+        if (!sVertexStream.empty()) {
+            const Vertex& v = sVertexStream.front();
+            const float input[4] = {v.x, v.y, v.z, 1.0f};
+            float view[4] = {v.x, v.y, v.z, 1.0f};
+            if (sVertexUsesPalette || !sVerticesPretransformed) {
+                const int slot = std::clamp(int(v.matrixSlot + 0.5f), 0, 20);
+                const float* m = sPosMatrix[sVertexUsesPalette ? slot * 3 : sCurrentPosMtxId];
+                for (int r = 0; r < 4; ++r) {
+                    view[r] = 0;
+                    for (int c = 0; c < 4; ++c) view[r] += m[c * 4 + r] * input[c];
+                }
+            }
+            float clip[4] = {};
+            for (int r = 0; r < 4; ++r)
+                for (int c = 0; c < 4; ++c) clip[r] += sProjMatrix[c * 4 + r] * view[c];
+            GLint vp[4], sc[4];
+            glGetIntegerv(GL_VIEWPORT, vp);
+            glGetIntegerv(GL_SCISSOR_BOX, sc);
+            printf("[Vita geometry] program=%u palette=%d pretransformed=%d clip=(%.3f,%.3f,%.3f,%.3f) vp=(%d,%d,%d,%d) sc=(%d,%d,%d,%d) depth=%d cull=%d\n",
+                   unsigned(sCurrentProgram), int(sVertexUsesPalette), int(sVerticesPretransformed),
+                   clip[0], clip[1], clip[2], clip[3], vp[0], vp[1], vp[2], vp[3],
+                   sc[0], sc[1], sc[2], sc[3], int(glIsEnabled(GL_DEPTH_TEST)), int(glIsEnabled(GL_CULL_FACE)));
+        }
+        fflush(stdout);
+        glActiveTexture_ptr(GL_TEXTURE0);
+    }
+#endif
     if (lastActiveMap != 0) glActiveTexture_ptr(GL_TEXTURE0);
     if (profilingSubmit) sSubmitTexBindMs += submit_clock_ms() - texT0;
 
@@ -8434,7 +8506,14 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
         if (mode != 0 && uniform_location_valid(sLoc.tcMtx[slot])) {
             u32 mtxIdx = (slot < 8) ? sTexCoordGen[slot].mtxIdx : 0;
             if (mtxIdx >= 64) mtxIdx = 0;
+#ifdef __vita__
+            float tcRows[8];
+            pc_matrix4_rows(sTexMatrices[mtxIdx], tcRows, 2);
+            glUniform4fv_ptr(sLoc.tcMtx[slot], 2, tcRows);
+            check_uniform_write(sLoc.tcMtx[slot], "texgen rows");
+#else
             glUniformMatrix4fv_ptr(sLoc.tcMtx[slot], 1, GL_FALSE, sTexMatrices[mtxIdx]);
+#endif
         }
     }
 

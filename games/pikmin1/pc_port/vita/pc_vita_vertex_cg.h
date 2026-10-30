@@ -1,7 +1,7 @@
 #pragma once
 // Native Vita interface adapted from Brendonm17/Open-Nectar-Vita v0.0.1.
 // Keep our 21-slot palette and CPU/pretransformed paths. Matrix uploads are
-// column-major GL_FALSE; vitaGL copies them into Cg rows, so use mul(v, M).
+// converted to explicit rows on the CPU; all transforms use dot products.
 // ATTR0..7 match pc_gfx.cpp. Seven interpolators carry final GX raster
 // colours, four UV sets and fog; no desktop GLSL translation is involved.
 static const char* kPcVitaVertexCg = R"CG(
@@ -38,7 +38,7 @@ float2 pick_tc(int i, float2 t0, float2 t1, float2 t2, float2 t3)
 }
 
 
-float2 gen_tc(int mode, float4x4 M, float4 viewPos, float3 nrm, float2 uvIn,
+float2 gen_tc(int mode, float4 M[2], float4 viewPos, float3 nrm, float2 uvIn,
               float2 g0, float2 g1, float2 g2, float2 g3,
               float2 a0, float2 a1, float2 a2, float2 a3)
 {
@@ -48,7 +48,7 @@ float2 gen_tc(int mode, float4x4 M, float4 viewPos, float3 nrm, float2 uvIn,
     else if (mode == 2)  src = float4(nrm, 1.0);
     else if (mode >= 11) src = float4(pick_tc(mode - 11, g0, g1, g2, g3), 0.0, 1.0);
     else                 src = float4(pick_tc(mode - 3,  a0, a1, a2, a3), 0.0, 1.0);
-    return mul(src, M).xy;
+    return float2(dot(M[0], src), dot(M[1], src));
 }
 
 void main(
@@ -61,8 +61,7 @@ void main(
     float2 aTexCoord3 : ATTR6,
     float  aMatrixSlot    : ATTR7,   
 
-    uniform float4x4 uProjMtx,
-    uniform float4x4 uPosMtx, uniform float3x3 uNrmMtx, uniform int uUsePalette,
+    uniform float4 uProjRows[4],
     
     
     uniform float4 uPosPalette[63],
@@ -100,8 +99,8 @@ void main(
     
     uniform int uTcMode_0, uniform int uTcMode_1,
     uniform int uTcMode_2, uniform int uTcMode_3,
-    uniform float4x4 uTcMtx_0, uniform float4x4 uTcMtx_1,
-    uniform float4x4 uTcMtx_2, uniform float4x4 uTcMtx_3,
+    uniform float4 uTcRows_0[2], uniform float4 uTcRows_1[2],
+    uniform float4 uTcRows_2[2], uniform float4 uTcRows_3[2],
 
     
     uniform float4 uFogParams,
@@ -119,14 +118,13 @@ void main(
     int mi = int(clamp(floor(aMatrixSlot + 0.5), 0.0, 20.0)) * 3;
     float4 p4 = float4(aPos, 1.0);
     float4 worldPos = float4(dot(uPosPalette[mi], p4), dot(uPosPalette[mi + 1], p4), dot(uPosPalette[mi + 2], p4), 1.0);
-    if (uUsePalette == 0) worldPos = mul(float4(aPos, 1.0), uPosMtx);
-    out_position = mul(worldPos, uProjMtx);
+    out_position = float4(dot(uProjRows[0], worldPos), dot(uProjRows[1], worldPos),
+                          dot(uProjRows[2], worldPos), dot(uProjRows[3], worldPos));
     
     float fogSpan = uFogParams.y - uFogParams.x;
     vFog = abs(fogSpan) < 1e-6 ? 0.0 : (-worldPos.z - uFogParams.x) / fogSpan;
     float3 N = normalize(float3(dot(uNrmPalette[mi].xyz, aNormal), dot(uNrmPalette[mi + 1].xyz, aNormal), dot(uNrmPalette[mi + 2].xyz, aNormal)));
 
-    if (uUsePalette == 0) N = normalize(mul(aNormal, uNrmMtx));
 
     float3 lit0 = uAmbColor.rgb + do_lights(N, worldPos.xyz, uNumLights,
         uLightPos_0, uLightPos_1, uLightPos_2, uLightPos_3,
@@ -194,10 +192,10 @@ void main(
     vColor1 = float4(saturate(base1 * lit1s), alpha0);
 
     float2 z = float2(0.0, 0.0);
-    float2 tc0 = gen_tc(uTcMode_0, uTcMtx_0, worldPos, aNormal, aTexCoord0, z,   z,   z,   z, aTexCoord0, aTexCoord1, aTexCoord2, aTexCoord3);
-    float2 tc1 = gen_tc(uTcMode_1, uTcMtx_1, worldPos, aNormal, aTexCoord1, tc0, z,   z,   z, aTexCoord0, aTexCoord1, aTexCoord2, aTexCoord3);
-    float2 tc2 = gen_tc(uTcMode_2, uTcMtx_2, worldPos, aNormal, aTexCoord2, tc0, tc1, z,   z, aTexCoord0, aTexCoord1, aTexCoord2, aTexCoord3);
-    float2 tc3 = gen_tc(uTcMode_3, uTcMtx_3, worldPos, aNormal, aTexCoord3, tc0, tc1, tc2, z, aTexCoord0, aTexCoord1, aTexCoord2, aTexCoord3);
+    float2 tc0 = gen_tc(uTcMode_0, uTcRows_0, worldPos, aNormal, aTexCoord0, z,   z,   z,   z, aTexCoord0, aTexCoord1, aTexCoord2, aTexCoord3);
+    float2 tc1 = gen_tc(uTcMode_1, uTcRows_1, worldPos, aNormal, aTexCoord1, tc0, z,   z,   z, aTexCoord0, aTexCoord1, aTexCoord2, aTexCoord3);
+    float2 tc2 = gen_tc(uTcMode_2, uTcRows_2, worldPos, aNormal, aTexCoord2, tc0, tc1, z,   z, aTexCoord0, aTexCoord1, aTexCoord2, aTexCoord3);
+    float2 tc3 = gen_tc(uTcMode_3, uTcRows_3, worldPos, aNormal, aTexCoord3, tc0, tc1, tc2, z, aTexCoord0, aTexCoord1, aTexCoord2, aTexCoord3);
     vTexCoord0 = tc0;
     vTexCoord1 = tc1;
     vTexCoord2 = tc2;
