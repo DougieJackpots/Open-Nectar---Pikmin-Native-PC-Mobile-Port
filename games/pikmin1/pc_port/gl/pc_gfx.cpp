@@ -3,6 +3,7 @@
 #include "../vita/pc_vita_tev_cg.h"
 #endif
 #include "pc_gfx.h"
+#include "pc_uniform_location.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -507,15 +508,15 @@ static void check_uniform_write(GLint loc, const char* kind) {
 // vitaGL uniform locations are addresses, not desktop integer indices.
 static bool uniform_location_valid(GLint loc) {
 #ifdef __vita__
-    return loc != -1 && loc != 0;
+    return pc_uniform_location_valid(loc, true);
 #else
-    return loc >= 0;
+    return pc_uniform_location_valid(loc, false);
 #endif
 }
 static void cached_uniform1i(GLint loc, GLint value) {
     if (!uniform_location_valid(loc)) return;
-    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
-    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); check_uniform_write(loc, "1i"); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); check_uniform_write(loc, "1i"); return; }
     auto& entry = sUC->c1i[loc];
     if (entry.generation == sUniformGeneration && entry.value == value) return;
     entry.generation = sUniformGeneration; entry.value = value;
@@ -524,8 +525,8 @@ static void cached_uniform1i(GLint loc, GLint value) {
 }
 static void cached_uniform1f(GLint loc, GLfloat value) {
     if (!uniform_location_valid(loc)) return;
-    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
-    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); check_uniform_write(loc, "1f"); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); check_uniform_write(loc, "1f"); return; }
     auto& entry = sUC->c1f[loc];
     if (entry.generation == sUniformGeneration && entry.value == value) return;
     entry.generation = sUniformGeneration; entry.value = value;
@@ -534,8 +535,8 @@ static void cached_uniform1f(GLint loc, GLfloat value) {
 }
 static void cached_uniform2i(GLint loc, GLint x, GLint y) {
     if (!uniform_location_valid(loc)) return;
-    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
-    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); check_uniform_write(loc, "2i"); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); check_uniform_write(loc, "2i"); return; }
     auto& entry = sUC->c2i[loc];
     const Uniform2iValue value { x, y };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -545,8 +546,8 @@ static void cached_uniform2i(GLint loc, GLint x, GLint y) {
 }
 static void cached_uniform4i(GLint loc, GLint x, GLint y, GLint z, GLint w) {
     if (!uniform_location_valid(loc)) return;
-    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
-    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); check_uniform_write(loc, "4i"); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); check_uniform_write(loc, "4i"); return; }
     auto& entry = sUC->c4i[loc];
     const Uniform4iValue value { x, y, z, w };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -556,8 +557,8 @@ static void cached_uniform4i(GLint loc, GLint x, GLint y, GLint z, GLint w) {
 }
 static void cached_uniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
     if (!uniform_location_valid(loc)) return;
-    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
-    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); check_uniform_write(loc, "4f"); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); check_uniform_write(loc, "4f"); return; }
     auto& entry = sUC->c4f[loc];
     const Uniform4fValue value { x, y, z, w };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -567,9 +568,9 @@ static void cached_uniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat
 }
 static void cached_uniform_mat4(GLint loc, GLsizei count, GLboolean transpose, const GLfloat* value) {
     if (!uniform_location_valid(loc) || !value) return;
-    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); check_uniform_write(loc, "mat4"); return; }
     if (count != 1 || transpose != GL_FALSE || static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) {
-        pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); return;
+        pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); check_uniform_write(loc, "mat4"); return;
     }
     auto& entry = sUC->cMat4[loc];
     if (entry.generation == sUniformGeneration && memcmp(entry.value.value, value, sizeof(entry.value.value)) == 0) return;
@@ -579,9 +580,9 @@ static void cached_uniform_mat4(GLint loc, GLsizei count, GLboolean transpose, c
 }
 static void cached_uniform_mat3(GLint loc, GLsizei count, GLboolean transpose, const GLfloat* value) {
     if (!uniform_location_valid(loc) || !value) return;
-    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); check_uniform_write(loc, "mat3"); return; }
     if (count != 1 || transpose != GL_FALSE || static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) {
-        pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); return;
+        pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); check_uniform_write(loc, "mat3"); return;
     }
     auto& entry = sUC->cMat3[loc];
     if (entry.generation == sUniformGeneration && memcmp(entry.value.value, value, sizeof(entry.value.value)) == 0) return;
@@ -2874,10 +2875,26 @@ static void query_program_locations(GLuint program, ProgramLocations& out) {
     // whichever program happened to be bound: GL rejected them, the samplers
     // kept their default of zero, and every multi-texture stage sampled unit 0.
     glUseProgram_ptr(program);
+    sCheckProgram = program;
     invalidate_uniform_cache();
     for (int i = 0; i < 8; i++) {
-        if (out.tex[i] >= 0) glUniform1i_ptr(out.tex[i], i);
+        if (uniform_location_valid(out.tex[i])) glUniform1i_ptr(out.tex[i], i);
     }
+#ifdef __vita__
+    static unsigned bindingReports = 0;
+    if (bindingReports++ < 12) {
+        printf("[Vita bindings] program=%u proj=%d pos=%d palette=%d; samplers:",
+               unsigned(program), int(out.projMtx), int(out.posMtx), int(out.posPalette));
+        for (int i = 0; i < 8; ++i) {
+            if (!uniform_location_valid(out.tex[i])) continue;
+            GLint actual = -1;
+            if (glGetUniformiv_ptr) glGetUniformiv_ptr(program, out.tex[i], &actual);
+            printf(" tex%d(loc=%d,unit=%d)", i, int(out.tex[i]), int(actual));
+        }
+        printf("\n");
+        fflush(stdout);
+    }
+#endif
 }
 
 static inline uint64_t hash_bytes(uint64_t h, const void* data, size_t bytes);
@@ -7251,7 +7268,7 @@ static void use_program_for_current_state() {
         printf("[PC GX dump] program %llu stages=%d; samplers:",
                (unsigned long long)sPerfShaderCompiles, int(key.numStages));
         for (int i = 0; i < 8; ++i) {
-            if (entry.locations.tex[i] < 0) continue;
+            if (!uniform_location_valid(entry.locations.tex[i])) continue;
             GLint bound = -1;
             if (glGetUniformiv_ptr) {
                 glGetUniformiv_ptr(program, entry.locations.tex[i], &bound);

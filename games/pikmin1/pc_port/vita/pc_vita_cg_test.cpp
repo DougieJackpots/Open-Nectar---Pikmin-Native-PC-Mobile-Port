@@ -1,10 +1,17 @@
 #include "pc_vita_tev_cg.h"
 #include "pc_vita_vertex_cg.h"
+#include "../gl/pc_uniform_location.h"
 #include <cassert>
 #include <cstdio>
 #include <string>
 
 int main() {
+    static_assert(pc_uniform_location_valid(-2147483647, true), "Vita encoded location");
+    static_assert(pc_uniform_location_valid(2147483647, true), "Vita encoded location");
+    static_assert(!pc_uniform_location_valid(-1, true), "missing Vita uniform");
+    static_assert(!pc_uniform_location_valid(0, true), "null Vita uniform");
+    static_assert(pc_uniform_location_valid(0, false), "desktop location zero");
+    static_assert(!pc_uniform_location_valid(-2, false), "invalid desktop location");
     // Exercise signed-register wrapping, comparison combiners, all sampler
     // units, channel 1 and the largest GX material before device compilation.
     for (int op : {0, 1, 8, 9, 10, 11, 12, 13, 14, 15}) {
