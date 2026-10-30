@@ -1,3 +1,7 @@
+#ifdef __vita__
+#include "../vita/pc_vita_vertex_cg.h"
+#include "../vita/pc_vita_tev_cg.h"
+#endif
 #include "pc_gfx.h"
 #include <cstdio>
 #include <cstdlib>
@@ -2278,21 +2282,7 @@ static const char* vShaderTail =
 // Fuente completa del shader de vértices: cabecera + iluminación GX compartida + cuerpo.
 static const std::string& vertex_shader_source() {
 #ifdef __vita__
-    // Temporary diagnostic: actual game positions and palettes, native Cg.
-    static const std::string diagnostic = R"CG(float4 main(float3 aPos : POSITION, float aMatrixSlot : TEXCOORD4,
- uniform float4x4 uProjMtx, uniform float4x4 uPosMtx,
- uniform int uUsePalette, uniform float4 uPosPalette[63]) : POSITION {
- float4 p = float4(aPos, 1.0);
- if (uUsePalette != 0) {
-  int r = int(clamp(floor(aMatrixSlot + 0.5), 0.0, 20.0)) * 3;
-  p = float4(dot(uPosPalette[r],p), dot(uPosPalette[r+1],p), dot(uPosPalette[r+2],p), 1.0);
- } else { p = mul(uPosMtx, p); }
- return mul(uProjMtx, p);
-})CG";
-    return diagnostic;
-#endif
-    #ifdef __vita__
-    static const std::string src = pc_vita_glsl(std::string(vShaderHead) + kGxLightingGlsl + vShaderTail, true);
+    static const std::string src = kPcVitaVertexCg;
 #else
     static const std::string src = std::string(vShaderHead) + kGxLightingGlsl + vShaderTail;
 #endif
@@ -2549,14 +2539,7 @@ static const char* fShaderTail =
 
 static const std::string& fragment_shader_source() {
 #ifdef __vita__
-    static const std::string diagnostic = "float4 main() : COLOR { return float4(1.0, 1.0, 0.0, 1.0); }";
-    return diagnostic;
-#endif
-#ifdef __vita__
-    // Do not compile the generic dynamic 16-stage evaluator at Vita startup.
-    // This boot program only establishes the shared vertex interface; every
-    // real draw below must use its exact specialised material program.
-    static const std::string src = pc_vita_glsl(pc_tev_build_fragment_source(PcTevShaderKey{}), false);
+    static const std::string src = pc_vita_cg::vita_cg_fragment_source(PcTevShaderKey{});
 #else
     static const std::string src = std::string(fShaderHead) + kGxLightingGlsl + kGxLightingFragGlsl + fShaderTail;
 #endif
@@ -2745,60 +2728,81 @@ static void bind_fixed_attrib_locations(GLuint program) {
 // most of them away; those come back as -1 and the matching glUniform call is
 // ignored by the driver, which is what lets one upload path serve both the
 // ubershader and the generated programs.
+static GLint query_gx_uniform(GLuint program, const char* name) {
+    GLint loc = glGetUniformLocation_ptr(program, name);
+#ifdef __vita__
+    if (loc != -1) return loc;
+    const char* bracket = strchr(name, '[');
+    if (bracket) {
+        // Palette arrays are native Cg arrays; scalar/matrix entries are
+        // flattened so each can be uploaded through its own location.
+        std::string native(name, size_t(bracket - name));
+        if (strcmp(bracket, "[0]") == 0) {
+            loc = glGetUniformLocation_ptr(program, native.c_str());
+            if (loc != -1) return loc;
+        }
+        native += '_';
+        native.append(bracket + 1, strcspn(bracket + 1, "]"));
+        loc = glGetUniformLocation_ptr(program, native.c_str());
+    }
+#endif
+    return loc;
+}
+
 static void query_program_locations(GLuint program, ProgramLocations& out) {
     out = ProgramLocations();
     invalidate_uniform_cache();
     drop_uniform_cache(program);
-    out.projMtx = glGetUniformLocation_ptr(program, "uProjMtx");
-    out.posMtx = glGetUniformLocation_ptr(program, "uPosMtx");
-    out.usePalette = glGetUniformLocation_ptr(program, "uUsePalette");
-    out.posPalette = glGetUniformLocation_ptr(program, "uPosPalette[0]");
-    out.nrmPalette = glGetUniformLocation_ptr(program, "uNrmPalette[0]");
-    out.materialColor = glGetUniformLocation_ptr(program, "uMaterialColor");
-    out.useMaterialRgb = glGetUniformLocation_ptr(program, "uUseMaterialRgb");
-    out.useMaterialAlpha = glGetUniformLocation_ptr(program, "uUseMaterialAlpha");
-    out.alphaComp0 = glGetUniformLocation_ptr(program, "uAlphaComp0");
-    out.alphaComp1 = glGetUniformLocation_ptr(program, "uAlphaComp1");
-    out.alphaOp = glGetUniformLocation_ptr(program, "uAlphaOp");
-    out.alphaRef0 = glGetUniformLocation_ptr(program, "uAlphaRef0");
-    out.alphaRef1 = glGetUniformLocation_ptr(program, "uAlphaRef1");
-    out.outTint = glGetUniformLocation_ptr(program, "uOutTint");
-    out.perPixel = glGetUniformLocation_ptr(program, "uPerPixel");
-    out.numStages = glGetUniformLocation_ptr(program, "uNumStages");
-    out.fastPath = glGetUniformLocation_ptr(program, "uFastPath");
-    out.tevPrev = glGetUniformLocation_ptr(program, "uTevPrev");
-    out.tevReg0 = glGetUniformLocation_ptr(program, "uTevReg0");
-    out.tevReg1 = glGetUniformLocation_ptr(program, "uTevReg1");
-    out.tevReg2 = glGetUniformLocation_ptr(program, "uTevReg2");
+    out.projMtx = query_gx_uniform(program, "uProjMtx");
+    out.posMtx = query_gx_uniform(program, "uPosMtx");
+    out.usePalette = query_gx_uniform(program, "uUsePalette");
+    out.posPalette = query_gx_uniform(program, "uPosPalette[0]");
+    out.nrmPalette = query_gx_uniform(program, "uNrmPalette[0]");
+    out.materialColor = query_gx_uniform(program, "uMaterialColor");
+    out.useMaterialRgb = query_gx_uniform(program, "uUseMaterialRgb");
+    out.useMaterialAlpha = query_gx_uniform(program, "uUseMaterialAlpha");
+    out.alphaComp0 = query_gx_uniform(program, "uAlphaComp0");
+    out.alphaComp1 = query_gx_uniform(program, "uAlphaComp1");
+    out.alphaOp = query_gx_uniform(program, "uAlphaOp");
+    out.alphaRef0 = query_gx_uniform(program, "uAlphaRef0");
+    out.alphaRef1 = query_gx_uniform(program, "uAlphaRef1");
+    out.outTint = query_gx_uniform(program, "uOutTint");
+    out.perPixel = query_gx_uniform(program, "uPerPixel");
+    out.numStages = query_gx_uniform(program, "uNumStages");
+    out.fastPath = query_gx_uniform(program, "uFastPath");
+    out.tevPrev = query_gx_uniform(program, "uTevPrev");
+    out.tevReg0 = query_gx_uniform(program, "uTevReg0");
+    out.tevReg1 = query_gx_uniform(program, "uTevReg1");
+    out.tevReg2 = query_gx_uniform(program, "uTevReg2");
     for (int i = 0; i < 4; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "uKonst%d", i);
-        out.konst[i] = glGetUniformLocation_ptr(program, buf);
+        out.konst[i] = query_gx_uniform(program, buf);
     }
     for (int i = 0; i < GX_MAXTEVSTAGE; i++) {
         char buf[64];
         snprintf(buf, sizeof(buf), "uTevCSel[%d]", i);
-        out.tevCSel[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevCSel[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uTevASel[%d]", i);
-        out.tevASel[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevASel[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uTevCOps[%d]", i);
-        out.tevCOps[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevCOps[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uTevAOps[%d]", i);
-        out.tevAOps[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevAOps[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uTevTexInfo[%d]", i);
-        out.tevTexInfo[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevTexInfo[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uTevKonst[%d]", i);
-        out.tevKonst[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevKonst[i] = query_gx_uniform(program, buf);
     }
     for (int i = 0; i < 4; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "uTevSwapTable[%d]", i);
-        out.tevSwapTable[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevSwapTable[i] = query_gx_uniform(program, buf);
     }
     for (int i = 0; i < GX_MAXTEVSTAGE; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "uTevSwapSel[%d]", i);
-        out.tevSwapSel[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevSwapSel[i] = query_gx_uniform(program, buf);
     }
     for (int i = 0; i < 8; i++) {
         char buf[16];
@@ -2808,62 +2812,62 @@ static void query_program_locations(GLuint program, ProgramLocations& out) {
         // the new program's locations to whichever program was still current,
         // which GL either rejected or, when that location happened to hold an
         // integer uniform, silently overwrote with a sampler index.
-        out.tex[i] = glGetUniformLocation_ptr(program, buf);
+        out.tex[i] = query_gx_uniform(program, buf);
     }
 
     for (int i = 0; i < 8; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "aTexCoord%d", i);
         snprintf(name, sizeof(name), "uTcMode[%d]", i);
-        out.tcMode[i] = glGetUniformLocation_ptr(program, name);
+        out.tcMode[i] = query_gx_uniform(program, name);
         snprintf(name, sizeof(name), "uTcMtx[%d]", i);
-        out.tcMtx[i] = glGetUniformLocation_ptr(program, name);
+        out.tcMtx[i] = query_gx_uniform(program, name);
     }
-    out.nrmMtx = glGetUniformLocation_ptr(program, "uNrmMtx");
-    out.numLights = glGetUniformLocation_ptr(program, "uNumLights");
-    out.ambColor = glGetUniformLocation_ptr(program, "uAmbColor");
-    out.chan0En = glGetUniformLocation_ptr(program, "uChan0En");
-    out.chan0AlphaEn = glGetUniformLocation_ptr(program, "uChan0AlphaEn");
-    out.chan0AlphaDiff = glGetUniformLocation_ptr(program, "uChan0AlphaDiff");
-    out.chan1En = glGetUniformLocation_ptr(program, "uChan1En");
-    out.chan0AttnFn = glGetUniformLocation_ptr(program, "uChan0AttnFn");
-    out.chan1AttnFn = glGetUniformLocation_ptr(program, "uChan1AttnFn");
-    out.numLights1 = glGetUniformLocation_ptr(program, "uNumLights1");
-    out.ambColor1 = glGetUniformLocation_ptr(program, "uAmbColor1");
-    out.materialColor1 = glGetUniformLocation_ptr(program, "uMaterialColor1");
-    out.useMaterialRgb1 = glGetUniformLocation_ptr(program, "uUseMaterialRgb1");
-    out.specHalf1 = glGetUniformLocation_ptr(program, "uSpecHalf1");
-    out.specAttn1 = glGetUniformLocation_ptr(program, "uSpecAttn1");
-    out.fogParams = glGetUniformLocation_ptr(program, "uFogParams");
-    out.fogColour = glGetUniformLocation_ptr(program, "uFogColour");
+    out.nrmMtx = query_gx_uniform(program, "uNrmMtx");
+    out.numLights = query_gx_uniform(program, "uNumLights");
+    out.ambColor = query_gx_uniform(program, "uAmbColor");
+    out.chan0En = query_gx_uniform(program, "uChan0En");
+    out.chan0AlphaEn = query_gx_uniform(program, "uChan0AlphaEn");
+    out.chan0AlphaDiff = query_gx_uniform(program, "uChan0AlphaDiff");
+    out.chan1En = query_gx_uniform(program, "uChan1En");
+    out.chan0AttnFn = query_gx_uniform(program, "uChan0AttnFn");
+    out.chan1AttnFn = query_gx_uniform(program, "uChan1AttnFn");
+    out.numLights1 = query_gx_uniform(program, "uNumLights1");
+    out.ambColor1 = query_gx_uniform(program, "uAmbColor1");
+    out.materialColor1 = query_gx_uniform(program, "uMaterialColor1");
+    out.useMaterialRgb1 = query_gx_uniform(program, "uUseMaterialRgb1");
+    out.specHalf1 = query_gx_uniform(program, "uSpecHalf1");
+    out.specAttn1 = query_gx_uniform(program, "uSpecAttn1");
+    out.fogParams = query_gx_uniform(program, "uFogParams");
+    out.fogColour = query_gx_uniform(program, "uFogColour");
     for (int i = 0; i < 16; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "uTevChan[%d]", i);
-        out.tevChan[i] = glGetUniformLocation_ptr(program, buf);
+        out.tevChan[i] = query_gx_uniform(program, buf);
     }
     for (int i = 0; i < 4; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "uLightPos[%d]", i);
-        out.lightPos[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightPos[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uLightColor[%d]", i);
-        out.lightColor[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightColor[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uLightK[%d]", i);
-        out.lightK[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightK[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uLightPos1[%d]", i);
-        out.lightPos1[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightPos1[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uLightColor1[%d]", i);
-        out.lightColor1[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightColor1[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uLightK1[%d]", i);
-        out.lightK1[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightK1[i] = query_gx_uniform(program, buf);
     }
     for (int i = 0; i < 4; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "uLightPos[%d]", i);
-        out.lightPos[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightPos[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uLightColor[%d]", i);
-        out.lightColor[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightColor[i] = query_gx_uniform(program, buf);
         snprintf(buf, sizeof(buf), "uLightK[%d]", i);
-        out.lightK[i] = glGetUniformLocation_ptr(program, buf);
+        out.lightK[i] = query_gx_uniform(program, buf);
     }
     // Sampler bindings are program state, so the program has to be current
     // before they are written. Leaving it out sent every glUniform1i to
@@ -3109,7 +3113,7 @@ void pc_gfx_init(void) {
     // by our independently generated material programs.
     vglSetSemanticBindingMode(kVitaGlobalShaderSemantics);
     printf("[Vita] Immediate shader compilation enabled (global semantics).\n");
-    printf("[Vita] SOLID GEOMETRY TEST: native Cg, yellow game geometry; textures and lighting bypassed.\n");
+    printf("[Vita] Native Cg renderer v1: GX materials, textures, vertex lighting and fog.\n");
     fflush(stdout);
 #endif
     state_touched();
@@ -4813,73 +4817,6 @@ void pc_gfx_end_swap_framebuffer(unsigned int bound) {
     if (glBindFramebuffer_ptr) glBindFramebuffer_ptr(GL_FRAMEBUFFER, GLuint(bound));
 }
 
-#ifdef __vita__
-// Native Cg diagnostic: independent of GX shaders, uniforms and textures.
-static void vita_present_probe() {
-    static bool attempted = false;
-    static GLuint program = 0, buffer = 0;
-    if (!attempted) {
-        attempted = true;
-        const char* sources[] = {
-            "float4 main(float3 aPos : POSITION) : POSITION { return float4(aPos, 1.0); }",
-            "float4 main() : COLOR { return float4(1.0, 0.0, 1.0, 1.0); }"
-        };
-        GLuint shaders[2] = {};
-        for (int i = 0; i < 2; ++i) {
-            shaders[i] = glCreateShader_ptr(i == 0 ? 0x890E : 0x890F);
-            glShaderSource_ptr(shaders[i], 1, &sources[i], nullptr);
-            glCompileShader_ptr(shaders[i]);
-            GLint ok = 0;
-            glGetShaderiv_ptr(shaders[i], GL_COMPILE_STATUS, &ok);
-            printf("[Vita Cg probe] stage %d compile: %d\n", i, int(ok));
-            if (!ok) {
-                char log[2048] = {};
-                glGetShaderInfoLog_ptr(shaders[i], sizeof log, nullptr, log);
-                printf("[Vita Cg probe] %s\n", log);
-                for (GLuint sh : shaders) if (sh) glDeleteShader_ptr(sh);
-                fflush(stdout);
-                return;
-            }
-        }
-        program = glCreateProgram_ptr();
-        for (GLuint sh : shaders) glAttachShader_ptr(program, sh);
-        glBindAttribLocation_ptr(program, 0, "aPos");
-        glLinkProgram_ptr(program);
-        GLint ok = 0;
-        glGetProgramiv_ptr(program, GL_LINK_STATUS, &ok);
-        for (GLuint sh : shaders) glDeleteShader_ptr(sh);
-        printf("[Vita Cg probe] link: %d; look for pink triangle at top right\n", int(ok));
-        fflush(stdout);
-        if (!ok) { glDeleteProgram_ptr(program); program = 0; return; }
-        const float vertices[] = {0.65f,0.65f,0, 0.95f,0.65f,0, 0.95f,0.95f,0};
-        glGenBuffers_ptr(1, &buffer);
-        glBindBuffer_ptr(GL_ARRAY_BUFFER, buffer);
-        glBufferData_ptr(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
-    }
-    if (!program) return;
-    GLint viewport[4]; glGetIntegerv(GL_VIEWPORT, viewport);
-    const GLenum caps[] = {GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST};
-    GLboolean enabled[4];
-    for (int i = 0; i < 4; ++i) { enabled[i] = glIsEnabled(caps[i]); glDisable(caps[i]); }
-    glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, sDrawableWidth, sDrawableHeight);
-    glUseProgram_ptr(program);
-    glBindBuffer_ptr(GL_ARRAY_BUFFER, buffer);
-    glEnableVertexAttribArray_ptr(0);
-    glVertexAttribPointer_ptr(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-    gl_error_checkpoint("native Cg triangle draw");
-    glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
-    setup_vertex_attribs();
-    glUseProgram_ptr(0);
-    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-    for (int i = 0; i < 4; ++i) if (enabled[i]) glEnable(caps[i]);
-    gl_program_cache_invalidate();
-    invalidate_uniform_cache();
-    invalidate_gl_pipeline_guards();
-}
-#endif
-
 void pc_gfx_present(void) {
     if (pc_gfx_null_skip()) return;
     if (!sNullDoomedTextures.empty()) {
@@ -4889,9 +4826,6 @@ void pc_gfx_present(void) {
         sNullDoomedTextures.clear();
     }
     pc_gfx_flush_batch();
-#ifdef __vita__
-    vita_present_probe();
-#endif
 #ifdef GL_TIME_ELAPSED
     if (sPerfGpuSceneActive) {
         glEndQuery_ptr(GL_TIME_ELAPSED);
@@ -7158,7 +7092,7 @@ static GLuint compile_specialised_program(const PcTevShaderKey& key) {
     printf("[Vita Shader] Begin material: %u TEV stage(s)\n", unsigned(key.numStages));
 #endif
     #ifdef __vita__
-    const std::string source = "float4 main() : COLOR { return float4(1.0, 1.0, 0.0, 1.0); }"; // native Cg solid geometry diagnostic
+    const std::string source = pc_vita_cg::vita_cg_fragment_source(key);
 #else
     const std::string source = pc_tev_build_fragment_source(key);
 #endif

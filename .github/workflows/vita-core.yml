@@ -7,7 +7,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: ['vita/shader-diagnostics']
+    branches: ['vita/shader-diagnostics', 'vita/native-renderer-rework']
   pull_request:
     paths: ['games/pikmin1/**', 'libs/**', 'scripts/build-vita-core.sh', '.github/workflows/vita-core.yml']
 permissions:
@@ -41,6 +41,12 @@ jobs:
             games/pikmin1/pc_port/vita/pc_host_readable_vita_test.cpp \
             -o "$RUNNER_TEMP/vita-memory-test"
           "$RUNNER_TEMP/vita-memory-test"
+      - name: Test native Cg generation and matrix convention
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror \
+            games/pikmin1/pc_port/vita/pc_vita_cg_test.cpp \
+            -o "$RUNNER_TEMP/vita-cg-test"
+          "$RUNNER_TEMP/vita-cg-test"
       - name: Test single-player feature gate
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror -DPIKI_SINGLE_PLAYER_ONLY=1 \
@@ -84,7 +90,7 @@ jobs:
           if-no-files-found: error
 
   experimental-package:
-    if: (github.event_name == 'workflow_dispatch' && inputs.build_game) || (github.event_name == 'push' && github.ref == 'refs/heads/vita/shader-diagnostics')
+    if: (github.event_name == 'workflow_dispatch' && inputs.build_game) || (github.event_name == 'push' && (github.ref == 'refs/heads/vita/shader-diagnostics' || github.ref == 'refs/heads/vita/native-renderer-rework'))
     needs: compile
     runs-on: ubuntu-latest
     timeout-minutes: 45
