@@ -1498,8 +1498,8 @@ static void dump_dolphin_texture_name(const u8* image, u16 width, u16 height, u3
         return;
     }
     if (sDumpedTextureNames.insert(name).second) {
-        fprintf(sTextureNamesLog, "%s\t%u\t%u\t%u\t%zu\n",
-                name, unsigned(width), unsigned(height), format, textureSize);
+        fprintf(sTextureNamesLog, "%s\t%u\t%u\t%u\t%lu\n",
+                name, unsigned(width), unsigned(height), format, static_cast<unsigned long>(textureSize));
         fflush(sTextureNamesLog);
     }
 }
@@ -3053,8 +3053,7 @@ static void mesh_arena_init() {
     glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
     sMeshArenaUsed = 0;
     sMeshArenaReady = glGetError() == GL_NO_ERROR;
-    printf("[PC Port] Resident mesh arena: %s (%zu MB)\n", sMeshArenaReady ? "ready" : "unavailable",
-           sMeshArenaCapacity >> 20);
+    printf("[PC Port] Resident mesh arena: %s (%lu MB)\n", sMeshArenaReady ? "ready" : "unavailable", static_cast<unsigned long>(sMeshArenaCapacity >> 20));
     if (!sMeshArenaReady) sMeshDecodeCacheEnabled = false;
 }
 
@@ -3500,9 +3499,7 @@ void pc_gfx_begin_frame(void) {
                 double(sPerfDisplayLists) / frames,
                 double(sPerfDisplayListBytes) / frames / (1024.0 * 1024.0),
                 double(sPerfTextureUploads) / frames);
-        fprintf(stderr, "[PERF MESH] %zu resident meshes, arena %zu/%zu MB, %u resets; stream ring %zu KB/frame (peak %zu KB of %zu MB)\n",
-                sResidentMeshes.size(), sMeshArenaUsed >> 20, sMeshArenaCapacity >> 20, sMeshResets,
-                sVboBytesLastFrame >> 10, sVboBytesPeakFrame >> 10, sVboCapacity >> 20);
+        fprintf(stderr, "[PERF MESH] %lu resident meshes, arena %lu/%lu MB, %u resets; stream ring %lu KB/frame (peak %lu KB of %lu MB)\n", static_cast<unsigned long>(sResidentMeshes.size()), static_cast<unsigned long>(sMeshArenaUsed >> 20), static_cast<unsigned long>(sMeshArenaCapacity >> 20), sMeshResets, static_cast<unsigned long>(sVboBytesLastFrame >> 10), static_cast<unsigned long>(sVboBytesPeakFrame >> 10), static_cast<unsigned long>(sVboCapacity >> 20));
         fprintf(stderr, "[PERF SHADER] %llu compiled this run, binary cache %s: %u hits, %u stored\n",
                 (unsigned long long)sPerfShaderCompiles, sProgramBinaryReady ? "on" : "off",
                 sProgramBinaryHits, sProgramBinaryMisses);
@@ -6671,13 +6668,13 @@ static void filesel_debug_log_draw()
     }
     if (!seen && sFileSelDrawKeyCount < 12) {
         sFileSelDrawKeys[sFileSelDrawKeyCount++] = key;
-        printf("[PC Port] FILESEL draw: blend=%d src=%s dst=%s tevC=(%d,%d,%d,%d) tevA=(%d,%d,%d,%d) C0=(%d,%d,%d,%d) C1=(%d,%d,%d,%d) fog=%d prog=%u verts=%zu\n",
+        printf("[PC Port] FILESEL draw: blend=%d src=%s dst=%s tevC=(%d,%d,%d,%d) tevA=(%d,%d,%d,%d) C0=(%d,%d,%d,%d) C1=(%d,%d,%d,%d) fog=%d prog=%u verts=%lu\n",
                blendOn ? 1 : 0, gl_blend_name(glSrc), gl_blend_name(glDst),
                int(st.colorIn[0]), int(st.colorIn[1]), int(st.colorIn[2]), int(st.colorIn[3]),
                int(st.alphaIn[0]), int(st.alphaIn[1]), int(st.alphaIn[2]), int(st.alphaIn[3]),
                c0r, c0g, c0b, c0a, c1r, c1g, c1b, c1a,
                (sFogRequested && sFogAllowed) ? 1 : 0,
-               unsigned(sCurrentProgram), sVertexStream.size());
+               unsigned(sCurrentProgram), static_cast<unsigned long>(sVertexStream.size()));
         fflush(stdout);
     }
 
@@ -7129,8 +7126,7 @@ static void use_program_for_current_state() {
     const GLuint program = compile_specialised_program(key);
     // Cada compilación es un tirón en móvil (decenas o cientos de ms): se
     // deja constancia con su coste para poder correlacionarla con parones.
-    printf("[PC GX] specialised TEV program #%zu: %u stages, %.1f ms%s\n",
-           sTevPrograms.size() + 1, (unsigned)sNumTevStages, submit_clock_ms() - compileT0,
+    printf("[PC GX] specialised TEV program #%lu: %u stages, %.1f ms%s\n", static_cast<unsigned long>(sTevPrograms.size() + 1), (unsigned)sNumTevStages, submit_clock_ms() - compileT0,
            program ? "" : " (FAILED)");
     // A burst of these blocks one netplay tick; between two programs the
     // netplay keep-alive polls the network.
@@ -7275,7 +7271,7 @@ static void report_desync(const char* what, const void* list, size_t offset, u32
     if (sDesyncReports >= 8) return;
     ++sDesyncReports;
     const u8* base = static_cast<const u8*>(list);
-    fprintf(stderr, "[PC GX] DESYNC #%d %s at byte %zu/%u  head:", sDesyncReports, what, offset, nbytes);
+    fprintf(stderr, "[PC GX] DESYNC #%d %s at byte %lu/%u  head:", sDesyncReports, what, static_cast<unsigned long>(offset), nbytes);
     for (size_t i = 0; i < 12 && i < nbytes; ++i) fprintf(stderr, " %02X", base[i]);
     fprintf(stderr, "  near:");
     const size_t from = offset > 6 ? offset - 6 : 0;
@@ -8056,8 +8052,8 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
                     uvMax[tc][1] = std::max(uvMax[tc][1], vertex.tex[tc][1]);
                 }
             }
-            fprintf(stderr, "[PERF TEVGEOM%u %s #%u] verts=%zu ndc=(%.3f,%.3f)-(%.3f,%.3f)",
-                    unsigned(sNumTevStages), pipelineScope->name, pipelineIndex, sVertexStream.size(),
+            fprintf(stderr, "[PERF TEVGEOM%u %s #%u] verts=%lu ndc=(%.3f,%.3f)-(%.3f,%.3f)",
+                    unsigned(sNumTevStages), pipelineScope->name, pipelineIndex, static_cast<unsigned long>(sVertexStream.size()),
                     ndcMinX, ndcMinY, ndcMaxX, ndcMaxY);
             bool reportedTc[4] = {};
             for (u8 stage = 0; stage < sNumTevStages; ++stage) {
@@ -8415,8 +8411,7 @@ void pc_gfx_end(void) {
     static bool reportedFirstDraw = false;
     if (!reportedFirstDraw) {
         GLenum error = glGetError();
-        printf("[PC Port] First GX draw: %zu vertices, GL status 0x%04x\n",
-               sVertexStream.size(), static_cast<unsigned>(error));
+        printf("[PC Port] First GX draw: %lu vertices, GL status 0x%04x\n", static_cast<unsigned long>(sVertexStream.size()), static_cast<unsigned>(error));
         if (error != GL_NO_ERROR) {
             const char* errStr = "UNKNOWN";
             switch (error) {
@@ -9107,7 +9102,7 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
     if (const size_t readable = pc_host_readable_bytes(list, nbytes); readable < nbytes) {
         static int reported = 0;
         if (reported++ < 8)
-            fprintf(stderr, "[PC GFX] display list %p: %u bytes declared, %zu readable\n", list, nbytes, readable);
+            fprintf(stderr, "[PC GFX] display list %p: %u bytes declared, %lu readable\n", list, nbytes, static_cast<unsigned long>(readable));
         nbytes = u32(readable);
         if (nbytes == 0) return;
     }
@@ -9247,8 +9242,8 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
                           size_t(cursor - static_cast<const u8*>(list) - 1), nbytes);
             flushPendingStrip();
             if (!reportedUnsupportedCommand) {
-                fprintf(stderr, "[PC GX] Unsupported display-list command 0x%02X at byte %zu/%u\n",
-                        command, size_t(cursor - static_cast<const u8*>(list) - 1), nbytes);
+                fprintf(stderr, "[PC GX] Unsupported display-list command 0x%02X at byte %lu/%u\n",
+                        command, static_cast<unsigned long>(size_t(cursor - static_cast<const u8*>(list) - 1)), nbytes);
                 reportedUnsupportedCommand = true;
             }
             break;
@@ -9387,11 +9382,10 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
                             (void)m;
                             const VertexFormatState& pf = sVtxFormats[format][GX_VA_POS];
                             fprintf(stderr,
-                                    "[PC GX] WILD #%d pos idx=%u base=%p stride=%u -> elem=%p (offset %zu)  fmt: count=%d type=%d frac=%u\n",
+                                    "[PC GX] WILD #%d pos idx=%u base=%p stride=%u -> elem=%p (offset %lu)  fmt: count=%d type=%d frac=%u\n",
                                     reports, unsigned(sLastPosIndex), (const void*)sLastPosBase,
                                     unsigned(sLastPosStride),
-                                    (const void*)(sLastPosBase + size_t(sLastPosIndex) * sLastPosStride),
-                                    size_t(sLastPosIndex) * sLastPosStride,
+                                    (const void*)(sLastPosBase + size_t(sLastPosIndex) * sLastPosStride), static_cast<unsigned long>(size_t(sLastPosIndex) * sLastPosStride),
                                     int(pf.count), int(pf.type), unsigned(pf.frac));
                             fprintf(stderr,
                                     "[PC GX] WILD #%d POS array last set on frame %llu (now %llu, %llu frames ago); set #%llu of %llu total\n",
@@ -9419,9 +9413,8 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
                                 wstride += bytes;
                                 fprintf(stderr, " a%d=%s(%u)", a, kind, bytes);
                             }
-                            fprintf(stderr, "  stride=%u  vat=%u  vert %u/%u at list byte %zu/%u\n",
-                                    wstride, unsigned(format), unsigned(vertex), unsigned(vertexCount),
-                                    size_t(vertexStart - static_cast<const u8*>(list)), nbytes);
+                            fprintf(stderr, "  stride=%u  vat=%u  vert %u/%u at list byte %lu/%u\n",
+                                    wstride, unsigned(format), unsigned(vertex), unsigned(vertexCount), static_cast<unsigned long>(size_t(vertexStart - static_cast<const u8*>(list))), nbytes);
                             fprintf(stderr, "[PC GX] WILD #%d stream:", reports);
                             for (int b = 0; b < 20 && vertexStart + b < end; ++b) {
                                 fprintf(stderr, " %02X", vertexStart[b]);
@@ -9522,8 +9515,7 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
             report_desync("truncated vertex", list,
                           size_t(cursor - static_cast<const u8*>(list)), nbytes);
             if (!reportedMalformedVertex) {
-                fprintf(stderr, "[PC GX] Malformed vertex stream at byte %zu/%u (format %u)\n",
-                        size_t(cursor - static_cast<const u8*>(list)), nbytes, format);
+                fprintf(stderr, "[PC GX] Malformed vertex stream at byte %lu/%u (format %u)\n", static_cast<unsigned long>(size_t(cursor - static_cast<const u8*>(list))), nbytes, format);
                 reportedMalformedVertex = true;
             }
             sInPrimitive = false;
