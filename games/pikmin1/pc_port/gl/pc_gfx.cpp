@@ -500,10 +500,18 @@ static void check_uniform_write(GLint loc, const char* kind) {
     fflush(stdout);
 }
 
+// vitaGL uniform locations are addresses, not desktop integer indices.
+static bool uniform_location_valid(GLint loc) {
+#ifdef __vita__
+    return loc != -1 && loc != 0;
+#else
+    return loc >= 0;
+#endif
+}
 static void cached_uniform1i(GLint loc, GLint value) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
     auto& entry = sUC->c1i[loc];
     if (entry.generation == sUniformGeneration && entry.value == value) return;
     entry.generation = sUniformGeneration; entry.value = value;
@@ -511,9 +519,9 @@ static void cached_uniform1i(GLint loc, GLint value) {
     check_uniform_write(loc, "1i");
 }
 static void cached_uniform1f(GLint loc, GLfloat value) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
     auto& entry = sUC->c1f[loc];
     if (entry.generation == sUniformGeneration && entry.value == value) return;
     entry.generation = sUniformGeneration; entry.value = value;
@@ -521,9 +529,9 @@ static void cached_uniform1f(GLint loc, GLfloat value) {
     check_uniform_write(loc, "1f");
 }
 static void cached_uniform2i(GLint loc, GLint x, GLint y) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
     auto& entry = sUC->c2i[loc];
     const Uniform2iValue value { x, y };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -532,9 +540,9 @@ static void cached_uniform2i(GLint loc, GLint x, GLint y) {
     check_uniform_write(loc, "2i");
 }
 static void cached_uniform4i(GLint loc, GLint x, GLint y, GLint z, GLint w) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
     auto& entry = sUC->c4i[loc];
     const Uniform4iValue value { x, y, z, w };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -543,9 +551,9 @@ static void cached_uniform4i(GLint loc, GLint x, GLint y, GLint z, GLint w) {
     check_uniform_write(loc, "4i");
 }
 static void cached_uniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
     auto& entry = sUC->c4f[loc];
     const Uniform4fValue value { x, y, z, w };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -554,9 +562,9 @@ static void cached_uniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat
     check_uniform_write(loc, "4f");
 }
 static void cached_uniform_mat4(GLint loc, GLsizei count, GLboolean transpose, const GLfloat* value) {
-    if (loc < 0 || !value) return;
+    if (!uniform_location_valid(loc) || !value) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); return; }
-    if (count != 1 || transpose != GL_FALSE || loc >= kUniformSetSize) {
+    if (count != 1 || transpose != GL_FALSE || static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) {
         pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); return;
     }
     auto& entry = sUC->cMat4[loc];
@@ -566,9 +574,9 @@ static void cached_uniform_mat4(GLint loc, GLsizei count, GLboolean transpose, c
     check_uniform_write(loc, "mat4");
 }
 static void cached_uniform_mat3(GLint loc, GLsizei count, GLboolean transpose, const GLfloat* value) {
-    if (loc < 0 || !value) return;
+    if (!uniform_location_valid(loc) || !value) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); return; }
-    if (count != 1 || transpose != GL_FALSE || loc >= kUniformSetSize) {
+    if (count != 1 || transpose != GL_FALSE || static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) {
         pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); return;
     }
     auto& entry = sUC->cMat3[loc];
@@ -7897,7 +7905,7 @@ void pc_gfx_flush_submit_stats(void) {
 // `slots` slots a mesh actually references, and only when one of those
 // matrices was reloaded since the last upload to this program.
 static void upload_matrix_palette(int slots) {
-    if (sLoc.posPalette < 0 && sLoc.nrmPalette < 0) return;
+    if (!uniform_location_valid(sLoc.posPalette) && !uniform_location_valid(sLoc.nrmPalette)) return;
     if (slots < 1) slots = 1;
     if (slots > kPaletteSlots) slots = kPaletteSlots;
     // Fingerprint: which program, which slots, and their revisions.
@@ -7925,8 +7933,8 @@ static void upload_matrix_palette(int slots) {
             nrm[slot * 3 + r][2] = n[6 + r]; nrm[slot * 3 + r][3] = 0.0f;
         }
     }
-    if (sLoc.posPalette >= 0) glUniform4fv_ptr(sLoc.posPalette, slots * 3, &pos[0][0]);
-    if (sLoc.nrmPalette >= 0) glUniform4fv_ptr(sLoc.nrmPalette, slots * 3, &nrm[0][0]);
+    if (uniform_location_valid(sLoc.posPalette)) glUniform4fv_ptr(sLoc.posPalette, slots * 3, &pos[0][0]);
+    if (uniform_location_valid(sLoc.nrmPalette)) glUniform4fv_ptr(sLoc.nrmPalette, slots * 3, &nrm[0][0]);
 }
 
 // Programs the GL pipeline for the current GX material state: program,
@@ -7951,7 +7959,7 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     };
     glUniformMatrix4fv_ptr(sLoc.posMtx, 1, GL_FALSE,
                           sVerticesPretransformed ? identity : sPosMatrix[sCurrentPosMtxId]);
-    if (sLoc.usePalette >= 0) glUniform1i_ptr(sLoc.usePalette, sVertexUsesPalette ? 1 : 0);
+    if (uniform_location_valid(sLoc.usePalette)) glUniform1i_ptr(sLoc.usePalette, sVertexUsesPalette ? 1 : 0);
     if (sVertexUsesPalette) upload_matrix_palette(sPaletteSlotsNeeded);
     glUniform4f_ptr(sLoc.materialColor, sChannels[0].matColor[0], sChannels[0].matColor[1],
                     sChannels[0].matColor[2], sChannels[0].matColor[3]);
@@ -7962,8 +7970,8 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     glUniform1i_ptr(sLoc.alphaOp, static_cast<int>(sAlphaOp));
     glUniform1f_ptr(sLoc.alphaRef0, sAlphaRef0);
     glUniform1f_ptr(sLoc.alphaRef1, sAlphaRef1);
-    if (sLoc.outTint >= 0) glUniform3f_ptr(sLoc.outTint, sOutTint[0], sOutTint[1], sOutTint[2]);
-    if (sLoc.perPixel >= 0) glUniform1i_ptr(sLoc.perPixel, sPerPixelLighting ? 1 : 0);
+    if (uniform_location_valid(sLoc.outTint)) glUniform3f_ptr(sLoc.outTint, sOutTint[0], sOutTint[1], sOutTint[2]);
+    if (uniform_location_valid(sLoc.perPixel)) glUniform1i_ptr(sLoc.perPixel, sPerPixelLighting ? 1 : 0);
     glUniform4f_ptr(sLoc.tevPrev, sTevRegisters[GX_TEVPREV][0], sTevRegisters[GX_TEVPREV][1],
                    sTevRegisters[GX_TEVPREV][2], sTevRegisters[GX_TEVPREV][3]);
     glUniform4f_ptr(sLoc.tevReg0, sTevRegisters[GX_TEVREG0][0], sTevRegisters[GX_TEVREG0][1],
@@ -8197,12 +8205,12 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
         const int packedAlphaOp = static_cast<int>(st.alphaOp) | (st.alphaClamp ? 0x100 : 0);
         glUniform4i_ptr(sLoc.tevCOps[stage], packedColorOp, st.colorBias, st.colorScale, st.colorOutReg);
         glUniform4i_ptr(sLoc.tevAOps[stage], packedAlphaOp, st.alphaBias, st.alphaScale, st.alphaOutReg);
-        if (sLoc.tevChan[stage] >= 0) {
+        if (uniform_location_valid(sLoc.tevChan[stage])) {
             // GX_COLOR1/GX_COLOR1A1 stages sample the specular channel's raster.
             glUniform4i_ptr(sLoc.tevChan[stage], st.rasChannel, 0, 0, 0);
         }
         // TEV swap mode
-        if (sLoc.tevSwapSel[stage] >= 0) {
+        if (uniform_location_valid(sLoc.tevSwapSel[stage])) {
             int rasSel = (int)sTevRasSwapSel[stage];
             int texSel = (int)sTevTexSwapSel[stage];
             glUniform2i_ptr(sLoc.tevSwapSel[stage], rasSel, texSel);
@@ -8210,7 +8218,7 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     }
     // TEV swap mode tables
     for (int t = 0; t < 4; ++t) {
-        if (sLoc.tevSwapTable[t] >= 0) {
+        if (uniform_location_valid(sLoc.tevSwapTable[t])) {
             glUniform4i_ptr(sLoc.tevSwapTable[t],
                 (int)sTevSwapModes[t].red,
                 (int)sTevSwapModes[t].green,
@@ -8245,7 +8253,7 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     if (profilingSubmit) sSubmitTexBindMs += submit_clock_ms() - texT0;
 
     // Upload lighting
-    if (sLoc.nrmMtx >= 0) {
+    if (uniform_location_valid(sLoc.nrmMtx)) {
         static const float identityNrm[9] = {
             1.0f, 0.0f, 0.0f,
             0.0f, 1.0f, 0.0f,
@@ -8292,12 +8300,12 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             }
         }
     }
-    if (sLoc.numLights >= 0) glUniform1i_ptr(sLoc.numLights, numLights);
-    if (sLoc.ambColor >= 0) glUniform4f_ptr(sLoc.ambColor, ambR, ambG, ambB, ambA);
-    if (sLoc.chan0En >= 0) glUniform1i_ptr(sLoc.chan0En, sChannels[0].enabled ? 1 : 0);
-    if (sLoc.chan0AlphaEn >= 0) glUniform1i_ptr(sLoc.chan0AlphaEn, alphaLit0 ? 1 : 0);
-    if (sLoc.chan0AlphaDiff >= 0) glUniform1i_ptr(sLoc.chan0AlphaDiff, (int)sChannels[0].alphaDiffFn);
-    if (sLoc.chan0AttnFn >= 0) glUniform1i_ptr(sLoc.chan0AttnFn, (int)sChannels[0].attnFn);
+    if (uniform_location_valid(sLoc.numLights)) glUniform1i_ptr(sLoc.numLights, numLights);
+    if (uniform_location_valid(sLoc.ambColor)) glUniform4f_ptr(sLoc.ambColor, ambR, ambG, ambB, ambA);
+    if (uniform_location_valid(sLoc.chan0En)) glUniform1i_ptr(sLoc.chan0En, sChannels[0].enabled ? 1 : 0);
+    if (uniform_location_valid(sLoc.chan0AlphaEn)) glUniform1i_ptr(sLoc.chan0AlphaEn, alphaLit0 ? 1 : 0);
+    if (uniform_location_valid(sLoc.chan0AlphaDiff)) glUniform1i_ptr(sLoc.chan0AlphaDiff, (int)sChannels[0].alphaDiffFn);
+    if (uniform_location_valid(sLoc.chan0AttnFn)) glUniform1i_ptr(sLoc.chan0AttnFn, (int)sChannels[0].attnFn);
 
     // Channel 1 (typically specular) feeds stages whose TEV order selects it.
     int numLights1 = 0;
@@ -8319,19 +8327,19 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             }
         }
     }
-    if (sLoc.numLights1 >= 0) glUniform1i_ptr(sLoc.numLights1, numLights1);
-    if (sLoc.ambColor1 >= 0) glUniform4f_ptr(sLoc.ambColor1, a1r, a1g, a1b, a1a);
-    if (sLoc.chan1En >= 0) glUniform1i_ptr(sLoc.chan1En, sChannels[1].enabled ? 1 : 0);
-    if (sLoc.chan1AttnFn >= 0) glUniform1i_ptr(sLoc.chan1AttnFn, (int)sChannels[1].attnFn);
+    if (uniform_location_valid(sLoc.numLights1)) glUniform1i_ptr(sLoc.numLights1, numLights1);
+    if (uniform_location_valid(sLoc.ambColor1)) glUniform4f_ptr(sLoc.ambColor1, a1r, a1g, a1b, a1a);
+    if (uniform_location_valid(sLoc.chan1En)) glUniform1i_ptr(sLoc.chan1En, sChannels[1].enabled ? 1 : 0);
+    if (uniform_location_valid(sLoc.chan1AttnFn)) glUniform1i_ptr(sLoc.chan1AttnFn, (int)sChannels[1].attnFn);
     // Specular half-vector: light 7's dir field (offset 0x34) holds it.
     if (sChannels[1].enabled && sChannels[1].attnFn == GX_AF_SPEC) {
         u32 mask1 = sChannels[1].lightMask;
         for (int i = 7; i < 8; i++) {
             if (mask1 & (1u << i) && sLights[i].active) {
-                if (sLoc.specHalf1 >= 0) {
+                if (uniform_location_valid(sLoc.specHalf1)) {
                     glUniform4f_ptr(sLoc.specHalf1, sLights[i].dir[0], sLights[i].dir[1], sLights[i].dir[2], 0.0f);
                 }
-                if (sLoc.specAttn1 >= 0) {
+                if (uniform_location_valid(sLoc.specAttn1)) {
                     glUniform4f_ptr(sLoc.specAttn1, sLights[i].a[0], sLights[i].a[1], sLights[i].a[2], 0.0f);
                 }
                 
@@ -8339,16 +8347,16 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             }
         }
     }
-    if (sLoc.materialColor1 >= 0)
+    if (uniform_location_valid(sLoc.materialColor1))
         glUniform4f_ptr(sLoc.materialColor1, sChannels[1].matColor[0], sChannels[1].matColor[1],
                         sChannels[1].matColor[2], sChannels[1].matColor[3]);
     // Only present in programs built with fog in the key, so the locations are
     // -1 everywhere else and this costs nothing on the draws that have none.
-    if (sLoc.fogParams >= 0)
+    if (uniform_location_valid(sLoc.fogParams))
         glUniform4f_ptr(sLoc.fogParams, sFogStart, sFogEnd, sFogNear, sFogFar);
-    if (sLoc.fogColour >= 0)
+    if (uniform_location_valid(sLoc.fogColour))
         glUniform4f_ptr(sLoc.fogColour, sFogColour[0], sFogColour[1], sFogColour[2], 1.0f);
-    if (sLoc.useMaterialRgb1 >= 0)
+    if (uniform_location_valid(sLoc.useMaterialRgb1))
         glUniform1i_ptr(sLoc.useMaterialRgb1, sChannels[1].matSrc == GX_SRC_REG ? 1 : 0);
 
     // Texture coordinate generation for every GX slot. TEX0-TEX7 sources are
@@ -8364,8 +8372,8 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             else if (src >= GX_TG_TEXCOORD0 && src <= GX_TG_TEXCOORD6)
                 mode = 11 + int(src - GX_TG_TEXCOORD0);
         }
-        if (sLoc.tcMode[slot] >= 0) glUniform1i_ptr(sLoc.tcMode[slot], mode);
-        if (mode != 0 && sLoc.tcMtx[slot] >= 0) {
+        if (uniform_location_valid(sLoc.tcMode[slot])) glUniform1i_ptr(sLoc.tcMode[slot], mode);
+        if (mode != 0 && uniform_location_valid(sLoc.tcMtx[slot])) {
             u32 mtxIdx = (slot < 8) ? sTexCoordGen[slot].mtxIdx : 0;
             if (mtxIdx >= 64) mtxIdx = 0;
             glUniformMatrix4fv_ptr(sLoc.tcMtx[slot], 1, GL_FALSE, sTexMatrices[mtxIdx]);
