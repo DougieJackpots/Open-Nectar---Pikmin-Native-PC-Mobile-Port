@@ -987,6 +987,11 @@ if (WIN32)
 elseif (VITA)
     target_link_libraries(${NECTAR_GAME} PRIVATE m ${SDL2_LIBRARIES}
         pthread SceSysmem_stub SceKernelThreadMgr_stub)
+    # libstdc++ probes pthread_cancel through a weak reference. Static archive
+    # extraction does not satisfy weak references, so retain the thread support
+    # probe and creation entry point explicitly before resolving libpthread.
+    target_link_options(${NECTAR_GAME} PRIVATE
+        "LINKER:--undefined=pthread_cancel" "LINKER:--undefined=pthread_create")
 elseif (ANDROID)
     # En Android no hay X11 ni OpenGL de escritorio. GLESv3 y EGL vienen del
     # NDK; log y android los necesita la capa de plataforma (logcat, ciclo de
