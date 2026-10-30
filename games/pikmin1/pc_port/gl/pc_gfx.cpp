@@ -3023,6 +3023,7 @@ static void depth_tex_image(int width, int height) {
 // The one Vertex layout, described to whichever GL_ARRAY_BUFFER is bound:
 // the streaming ring at init, the resident-mesh arena in its own VAO.
 static void setup_vertex_attribs() {
+    gl_error_checkpoint("before vertex attribute setup");
     glEnableVertexAttribArray_ptr(sAttrPos);
     glVertexAttribPointer_ptr(sAttrPos, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, x));
     if (sAttrNormal >= 0) {
@@ -3042,6 +3043,7 @@ static void setup_vertex_attribs() {
                                       sizeof(Vertex), reinterpret_cast<void*>(offset));
         }
     }
+    gl_error_checkpoint("after vertex attribute setup");
 }
 
 // Static VBO arena for resident meshes, with its own VAO so switching between
@@ -3262,6 +3264,15 @@ void pc_gfx_init(void) {
     gl_error_checkpoint("ubershader link");
     query_program_locations(sShaderProgram, sLoc);
     gl_error_checkpoint("ubershader uniform locations");
+#ifdef __vita__
+    if (glGetAttribLocation_ptr) {
+        const char* names[] = {"aPos", "aColor", "aNormal", "aTexCoord0", "aTexCoord1", "aTexCoord2", "aTexCoord3", "aMatrixSlot"};
+        for (int i = 0; i < 8; ++i) {
+            GLint actual = glGetAttribLocation_ptr(sShaderProgram, names[i]);
+            printf("[Vita attribute] %s: expected %d, actual %d\n", names[i], i, int(actual));
+        }
+    }
+#endif
     sUberLocations = sLoc;
     sCurrentProgram = sShaderProgram;
     // The vertex shader is identical for every specialised program, so it is
@@ -3273,6 +3284,7 @@ void pc_gfx_init(void) {
     glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
     glBufferData_ptr(GL_ARRAY_BUFFER, sVboCapacity, nullptr, GL_STREAM_DRAW);
 
+#ifndef __vita__
     if (glGenFramebuffers_ptr && glBindFramebuffer_ptr && glFramebufferTexture2D_ptr
         && glGenRenderbuffers_ptr && glBindRenderbuffer_ptr && glRenderbufferStorage_ptr
         && glFramebufferRenderbuffer_ptr && glCheckFramebufferStatus_ptr && glBlitFramebuffer_ptr) {
@@ -3325,6 +3337,11 @@ void pc_gfx_init(void) {
                sNativeFramebufferReady ? "active" : "unavailable", sRenderScale,
                sDepthIsTexture ? "texture (readable)" : "renderbuffer (not readable)");
     }
+#else
+    sNativeFramebufferReady = false;
+    glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
+    printf("[Vita] Direct display framebuffer enabled; intermediate target and blit bypassed.\n");
+#endif
     // macOS only. Core profiles have no default VAO (name 0), so the streaming
     // ring's attribute layout must be recorded in its own VAO. The ring (sVBO)
     // is already bound, so the attributes refer to it. Elsewhere sStreamVAO stays
@@ -3629,6 +3646,15 @@ void pc_gfx_begin_frame(void) {
     // SDL sigue diciendo el tamaño de la pantalla; la superficie real es la
     // que pidió pc_window (ver pc_android_request_surface_size).
     pc_android_surface_size(&sDrawableWidth, &sDrawableHeight);
+#endif
+#ifdef __vita__
+    if (sDrawableWidth > 0 && sDrawableHeight > 0) {
+        sCurrentAspectRatio = calculate_aspect_ratio(sAspectRatioMode,
+            float(sDrawableWidth) / float(sDrawableHeight));
+        sRenderWidth = sDrawableWidth;
+        sRenderHeight = sDrawableHeight;
+        glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
+    }
 #endif
     if (sNativeFramebufferReady && sDrawableWidth > 0 && sDrawableHeight > 0) {
         // Calculate aspect ratio for this frame
