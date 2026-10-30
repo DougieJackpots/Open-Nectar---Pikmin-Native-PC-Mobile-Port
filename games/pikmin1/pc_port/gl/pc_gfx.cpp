@@ -2277,6 +2277,20 @@ static const char* vShaderTail =
 
 // Fuente completa del shader de vértices: cabecera + iluminación GX compartida + cuerpo.
 static const std::string& vertex_shader_source() {
+#ifdef __vita__
+    // Temporary diagnostic: actual game positions and palettes, native Cg.
+    static const std::string diagnostic = R"CG(float4 main(float3 aPos : POSITION, float aMatrixSlot : TEXCOORD4,
+ uniform float4x4 uProjMtx, uniform float4x4 uPosMtx,
+ uniform int uUsePalette, uniform float4 uPosPalette[63]) : POSITION {
+ float4 p = float4(aPos, 1.0);
+ if (uUsePalette != 0) {
+  int r = int(clamp(floor(aMatrixSlot + 0.5), 0.0, 20.0)) * 3;
+  p = float4(dot(uPosPalette[r],p), dot(uPosPalette[r+1],p), dot(uPosPalette[r+2],p), 1.0);
+ } else { p = mul(uPosMtx, p); }
+ return mul(uProjMtx, p);
+})CG";
+    return diagnostic;
+#endif
     #ifdef __vita__
     static const std::string src = pc_vita_glsl(std::string(vShaderHead) + kGxLightingGlsl + vShaderTail, true);
 #else
@@ -2534,6 +2548,10 @@ static const char* fShaderTail =
     "}\n";
 
 static const std::string& fragment_shader_source() {
+#ifdef __vita__
+    static const std::string diagnostic = "float4 main() : COLOR { return float4(1.0, 1.0, 0.0, 1.0); }";
+    return diagnostic;
+#endif
 #ifdef __vita__
     // Do not compile the generic dynamic 16-stage evaluator at Vita startup.
     // This boot program only establishes the shared vertex interface; every
@@ -3091,6 +3109,7 @@ void pc_gfx_init(void) {
     // by our independently generated material programs.
     vglSetSemanticBindingMode(kVitaGlobalShaderSemantics);
     printf("[Vita] Immediate shader compilation enabled (global semantics).\n");
+    printf("[Vita] SOLID GEOMETRY TEST: native Cg, yellow game geometry; textures and lighting bypassed.\n");
     fflush(stdout);
 #endif
     state_touched();
@@ -3173,7 +3192,13 @@ void pc_gfx_init(void) {
     }
 
     // Compile Shaders
-    GLuint vs = glCreateShader_ptr(GL_VERTEX_SHADER);
+    GLuint vs = glCreateShader_ptr(
+#ifdef __vita__
+        0x890E
+#else
+        GL_VERTEX_SHADER
+#endif
+    );
     vShaderSrc = vertex_shader_source().c_str();
     fShaderSrc = fragment_shader_source().c_str();
 #include "../vita/pc_vita_shader_probes.inc"
@@ -3192,7 +3217,13 @@ void pc_gfx_init(void) {
     }
 
     printf("[PC GX Init] Creating fragment shader...\n");
-    GLuint fs = glCreateShader_ptr(GL_FRAGMENT_SHADER);
+    GLuint fs = glCreateShader_ptr(
+#ifdef __vita__
+        0x890F
+#else
+        GL_FRAGMENT_SHADER
+#endif
+    );
     if (!uberFromBinary) {
         printf("[PC GX Init] Uploading fragment shader...\n");
         glShaderSource_ptr(fs, 1, &fShaderSrc, NULL);
@@ -7127,7 +7158,7 @@ static GLuint compile_specialised_program(const PcTevShaderKey& key) {
     printf("[Vita Shader] Begin material: %u TEV stage(s)\n", unsigned(key.numStages));
 #endif
     #ifdef __vita__
-    const std::string source = pc_vita_glsl(pc_tev_build_fragment_source(key), false);
+    const std::string source = "float4 main() : COLOR { return float4(1.0, 1.0, 0.0, 1.0); }"; // native Cg solid geometry diagnostic
 #else
     const std::string source = pc_tev_build_fragment_source(key);
 #endif
@@ -7145,7 +7176,13 @@ static GLuint compile_specialised_program(const PcTevShaderKey& key) {
         glDeleteProgram_ptr(program);
     }
 
-    GLuint fragment = glCreateShader_ptr(GL_FRAGMENT_SHADER);
+    GLuint fragment = glCreateShader_ptr(
+#ifdef __vita__
+        0x890F
+#else
+        GL_FRAGMENT_SHADER
+#endif
+    );
     glShaderSource_ptr(fragment, 1, &sourcePtr, nullptr);
     glCompileShader_ptr(fragment);
     GLint status = 0;
