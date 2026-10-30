@@ -18,6 +18,21 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Install compiler cache
+        run: sudo apt-get update -qq && sudo apt-get install -y ccache
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-vita-ccache-v1-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-vita-ccache-v1-${{ github.job }}-
+      - name: Configure compiler cache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compiler_check=content
+          ccache --zero-stats
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
       - name: Test Vita memory bounds on the host
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror \
@@ -34,7 +49,16 @@ jobs:
             games/pikmin1/pc_port/vita/pc_singleplayer_test.cpp \
             -o "$RUNNER_TEMP/vita-singleplayer-test"
           "$RUNNER_TEMP/vita-singleplayer-test"
+      - name: Restore VitaSDK and dependency installation
+        id: vita-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vita-sdk
+          key: ${{ runner.os }}-vita-sdk-20261015-v1-${{ github.job }}-${{ hashFiles('scripts/build-vita-deps.sh') }}
+      - name: Set SDK path
+        run: echo "VITASDK=$RUNNER_TEMP/vita-sdk/vitasdk" >> "$GITHUB_ENV"
       - name: Install pinned VitaSDK
+        if: steps.vita-sdk-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           archive=vitasdk-x86_64-linux-gnu-2026-10-15_05-01-16.tar.bz2
@@ -46,7 +70,10 @@ jobs:
           tar -xjf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/vita-sdk"
           echo "VITASDK=$RUNNER_TEMP/vita-sdk/vitasdk" >> "$GITHUB_ENV"
       - name: Cross-compile Pikmin 1 logic and OS
-        run: bash scripts/build-vita-core.sh
+        run: bash scripts/build-vita-core.sh -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats
       - name: Preserve developer archives
         uses: actions/upload-artifact@v4
         with:
@@ -63,7 +90,31 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Install compiler cache
+        run: sudo apt-get update -qq && sudo apt-get install -y ccache
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-vita-ccache-v1-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-vita-ccache-v1-${{ github.job }}-
+      - name: Configure compiler cache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compiler_check=content
+          ccache --zero-stats
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Restore VitaSDK and dependency installation
+        id: vita-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vita-sdk
+          key: ${{ runner.os }}-vita-sdk-20261015-v1-${{ github.job }}-${{ hashFiles('scripts/build-vita-deps.sh') }}
+      - name: Set SDK path
+        run: echo "VITASDK=$RUNNER_TEMP/vita-sdk/vitasdk" >> "$GITHUB_ENV"
       - name: Install pinned VitaSDK
+        if: steps.vita-sdk-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           archive=vitasdk-x86_64-linux-gnu-2026-10-15_05-01-16.tar.bz2
@@ -75,9 +126,13 @@ jobs:
           tar -xjf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/vita-sdk"
           echo "VITASDK=$RUNNER_TEMP/vita-sdk/vitasdk" >> "$GITHUB_ENV"
       - name: Build SDL vitaGL dependencies
+        if: steps.vita-sdk-cache.outputs.cache-hit != 'true'
         run: bash scripts/build-vita-deps.sh
       - name: Link and package experimental runtime
-        run: bash scripts/build-vita-game.sh
+        run: bash scripts/build-vita-game.sh -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats
       - uses: actions/upload-artifact@v4
         with:
           name: pikmin1-vita-experimental-unvalidated
