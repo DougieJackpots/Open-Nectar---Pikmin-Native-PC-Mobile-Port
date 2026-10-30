@@ -1423,6 +1423,9 @@ void loadConfig() {
             sConfig.fpsMode = atoi(val.c_str());
             if (sConfig.fpsMode < 0) sConfig.fpsMode = 0;
             if (sConfig.fpsMode > 3) sConfig.fpsMode = 3;
+#ifdef __vita__
+            sConfig.fpsMode = 0;
+#endif
         }
         else if (key == "chainActions") {
             sConfig.chainActions = atoi(val.c_str()) ? 1 : 0;
@@ -3193,11 +3196,16 @@ void mainRowValue(int row, char* out, size_t n) {
 
     const char* fpsModeNames[3] = { "30 FPS (stable)", "60 FPS (experimental)", "120 FPS (experimental)" };
     char fpsModeBuf[32];
+#ifdef __vita__
+    snprintf(fpsModeBuf, sizeof(fpsModeBuf), "30 FPS (Vita target)");
+#else
     if (sPending.fpsMode == 3) {
         snprintf(fpsModeBuf, sizeof(fpsModeBuf), "Monitor (%.0f Hz)", pc_window_get_refresh_rate());
     } else {
         snprintf(fpsModeBuf, sizeof(fpsModeBuf), "%s", fpsModeNames[sPending.fpsMode >= 0 && sPending.fpsMode < 3 ? sPending.fpsMode : 0]);
     }
+
+#endif
 
     char valueBuf[ROW_DISPLAY_COUNT][128];
     snprintf(valueBuf[0], sizeof(valueBuf[0]), "%s",
@@ -3309,11 +3317,15 @@ void mainRowChange(int row, bool left, bool right, bool ok) {
         }
         break;
     case ROW_FPS_MODE:
+#ifdef __vita__
+        sPending.fpsMode = 0;
+#else
         if (left) {
             sPending.fpsMode = (sPending.fpsMode - 1 + 4) % 4;
         } else if (right) {
             sPending.fpsMode = (sPending.fpsMode + 1) % 4;
         }
+#endif
         break;
     default:
         break;
@@ -7428,7 +7440,7 @@ void pc_mission_prompt_draw(void) {
             vsFitText(why.c_str(), line, sizeof(line), colW - 20, 10);
             vsText(tx, y + 90, line, body, 10, 15);
         } else {
-            snprintf(line, sizeof(line), es ? "%zu zonas, %d piezas" : "%zu zones, %d parts", c.doc.zones.size(), c.partTotal);
+            snprintf(line, sizeof(line), es ? "%lu zonas, %d piezas" : "%lu zones, %d parts", static_cast<unsigned long>(c.doc.zones.size()), c.partTotal);
             vsText(tx, y + 70, line, body, 10, 15);
             vsText(tx, y + 92, c.coop ? (es ? "1 o 2 jugadores" : "1 or 2 players") : (es ? "1 jugador" : "1 player"), body, 10, 15);
             if (c.doc.ending.dayLimit > 0) {
@@ -7939,7 +7951,7 @@ void pc_campaign_map_draw(void)
              pc_campaign_day_limit() > 0 ? (std::string(" / ") + std::to_string(pc_campaign_day_limit())).c_str() : "");
     vsText(px + 12, y, line, body, 10, 15);
     y += 20;
-    snprintf(line, sizeof(line), es ? "Piezas %zu / %d" : "Parts %zu / %d", prog.parts.size(), pack->partTotal);
+    snprintf(line, sizeof(line), es ? "Piezas %lu / %d" : "Parts %lu / %d", static_cast<unsigned long>(prog.parts.size()), pack->partTotal);
     vsText(px + 12, y, line, body, 10, 15);
     y += 20;
     {
@@ -7995,7 +8007,7 @@ void pc_campaign_map_draw(void)
         vsText(px + 12, y, line, body, 10, 15);
         y += 20;
     } else {
-        snprintf(line, sizeof(line), es ? "Piezas: %d / %zu" : "Parts: %d / %zu", pc_campaign_zone_parts_found(sCmapSel), info.parts.size());
+        snprintf(line, sizeof(line), es ? "Piezas: %d / %lu" : "Parts: %d / %lu", pc_campaign_zone_parts_found(sCmapSel), static_cast<unsigned long>(info.parts.size()));
         vsText(px + 12, y, line, body, 10, 15);
         y += 20;
         const char* medal = pc_mission_medal_name(pc_campaign_zone_medal(sCmapSel), es);
@@ -8897,8 +8909,7 @@ void pc_settings_draw(void) {
             size_t replaced = 0, missing = 0, failed = 0;
             pc_texpack_stats(&replaced, &missing, &failed);
             char counts[120];
-            snprintf(counts, sizeof(counts), "Textures: %zu replaced, %zu not in pack, %zu failed",
-                     replaced, missing, failed);
+            snprintf(counts, sizeof(counts), "Textures: %lu replaced, %lu not in pack, %lu failed", static_cast<unsigned long>(replaced), static_cast<unsigned long>(missing), static_cast<unsigned long>(failed));
             drawTextOutline(subX + subW / 2 - menuTextWidth(counts) / 2, subY + subH - 30,
                             "%s", Colour(180, 190, 215, 255), Colour(10, 16, 36, 255), counts);
         }
@@ -8938,8 +8949,13 @@ int pc_settings_get_speedrun_ls_hide_clock(void) { return sConfig.speedrunLsHide
 const char* pc_settings_get_speedrun_ls_host(void) { return sConfig.speedrunLsHost; }
 int pc_settings_get_speedrun_ls_port(void) { return sConfig.speedrunLsPort; }
 int pc_settings_get_online_stun(void) { return sConfig.onlineStun; }
-int pc_settings_get_fps_mode(void) { if (pc_speedrun_active()) return 0;
+int pc_settings_get_fps_mode(void) {
+#ifdef __vita__
+    return 0; // original 30 FPS mode, regardless of persisted desktop settings
+#else
+    if (pc_speedrun_active()) return 0;
     return sConfig.fpsMode;
+#endif
 }
 
 int pc_settings_get_chain_actions(void) { if (pc_speedrun_active()) return 0;

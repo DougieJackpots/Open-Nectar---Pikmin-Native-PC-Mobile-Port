@@ -364,6 +364,10 @@ void System::run(BaseApp* app)
     auto lastFpsPrint = std::chrono::steady_clock::now();
 
     // Initialize frame scheduler for fixed-step timing
+#ifdef __vita__
+    setFrameClamp(2);
+    pc_frame_set_vsync_lock(false);
+#endif
     PcFrameScheduler frameScheduler;
     frameScheduler.reset(std::chrono::steady_clock::now().time_since_epoch().count() / 1e9, mFrameRate);
 
@@ -503,17 +507,15 @@ void System::run(BaseApp* app)
             pc_gfx_get_pool_peaks(&matrixPeak, &matrixMax, &shapePeak, &shapeMax);
             size_t texLive = 0, texBytes = 0, texPeak = 0, texMade = 0, texFreed = 0;
             pc_gfx_get_texture_stats(&texLive, &texBytes, &texPeak, &texMade, &texFreed);
-            printf("[PC Port] FPS: %.1f, DeltaTime: %.4fms, clamp: %d, TEV programs: %zu%s, "
+            printf("[PC Port] FPS: %.1f, DeltaTime: %.4fms, clamp: %d, TEV programs: %lu%s, "
                    "matrices: %d/%d, shapes: %d/%d\n",
-                   getFrameRate(), mDeltaTime * 1000.0, mFrameRate,
-                   pc_gfx_get_specialised_program_count(),
+                   getFrameRate(), mDeltaTime * 1000.0, mFrameRate, static_cast<unsigned long>(pc_gfx_get_specialised_program_count()),
                    pc_gfx_get_shader_specialisation() ? "" : " (ubershader)",
                    matrixPeak, matrixMax, shapePeak, shapeMax);
             // Texture memory on its own line: it is the port's largest single
             // consumer and, until heap resets started giving it back, it only
             // ever grew.
-            printf("[PC Port] Textures: %zu live, %zu MB (peak %zu MB), %zu made / %zu freed\n",
-                   texLive, texBytes >> 20, texPeak >> 20, texMade, texFreed);
+            printf("[PC Port] Textures: %lu live, %lu MB (peak %lu MB), %lu made / %lu freed\n", static_cast<unsigned long>(texLive), static_cast<unsigned long>(texBytes >> 20), static_cast<unsigned long>(texPeak >> 20), static_cast<unsigned long>(texMade), static_cast<unsigned long>(texFreed));
             // The budget is always the 60 Hz one: the question this answers is
             // whether a tick would fit there, not whether it fits the 30 Hz
             // period it is currently running at.

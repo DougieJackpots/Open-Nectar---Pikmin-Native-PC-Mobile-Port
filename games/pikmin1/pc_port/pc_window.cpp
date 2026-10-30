@@ -1116,7 +1116,7 @@ bool pc_window_init(const char* title, int width, int height) {
         const double requested = strtod(value, nullptr);
         if (requested >= 20.0 && requested <= 1000.0) sTargetRefreshRate = requested;
     }
-    printf("[PC Port] Target refresh rate: %.2f Hz\n", sTargetRefreshRate);
+    printf("[PC Port] Display refresh rate: %.2f Hz\n", sTargetRefreshRate);
 
     // Check for connected controllers
     for (int i = 0; i < SDL_NumJoysticks(); ++i) {

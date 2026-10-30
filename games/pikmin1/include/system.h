@@ -240,7 +240,12 @@ public:
 	bool resetPending() { return mSoftResetPending; }
 	void setFrameClamp(int frameRate)
 	{
+#ifdef __vita__
+		(void)frameRate;
+		mFrameRate = 2; // 60 Hz clock / 2: Vita targets 30 FPS in every section.
+#else
 		mFrameRate = frameRate;
+#endif
 	}
 #if defined(PIKI_PC_PORT)
 	/**

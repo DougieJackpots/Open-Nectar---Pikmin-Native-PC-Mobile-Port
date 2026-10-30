@@ -625,8 +625,8 @@ bool pc_audio_play_stx(const char* path) {
     sStreamFadeGain = 1.0f;
     sStreamFadeStep = 0.0f;
     SDL_UnlockAudioDevice(sAudioDevice);
-    printf("[PC Port] Playing STX stream: %s (%u Hz, %zu frames)\n",
-           path, static_cast<unsigned>(sampleRate), outputFrames);
+    printf("[PC Port] Playing STX stream: %s (%u Hz, %lu frames)\n",
+           path, static_cast<unsigned>(sampleRate), static_cast<unsigned long>(outputFrames));
     return true;
 }
 
@@ -686,27 +686,21 @@ bool pc_audio_load_wave_bank(const char* path) {
                path, sWaveBank.error().c_str());
         return false;
     }
-    printf("[PC Port] JAudio wave catalog loaded: %zu WSYS, %zu waves\n",
-           sWaveBank.waveSystemCount(), sWaveBank.waveCount());
+    printf("[PC Port] JAudio wave catalog loaded: %lu WSYS, %lu waves\n", static_cast<unsigned long>(sWaveBank.waveSystemCount()), static_cast<unsigned long>(sWaveBank.waveCount()));
     if (!sInstrumentBank.load(path)) {
         printf("[PC Port Error] Could not load JAudio instrument banks %s: %s\n",
                path, sInstrumentBank.error().c_str());
         return false;
     }
-    printf("[PC Port] JAudio instrument catalog loaded: %zu/%zu IBNK, "
-           "%zu instruments, %zu regions, %zu oscillators, %zu legacy percussion\n",
-           sInstrumentBank.bankCount(), sInstrumentBank.bankSlotCount(),
-           sInstrumentBank.instrumentCount(), sInstrumentBank.regionCount(),
-           sInstrumentBank.oscillatorCount(),
-           sInstrumentBank.unsupportedPercussionCount());
+    printf("[PC Port] JAudio instrument catalog loaded: %lu/%lu IBNK, "
+           "%lu instruments, %lu regions, %lu oscillators, %lu legacy percussion\n", static_cast<unsigned long>(sInstrumentBank.bankCount()), static_cast<unsigned long>(sInstrumentBank.bankSlotCount()), static_cast<unsigned long>(sInstrumentBank.instrumentCount()), static_cast<unsigned long>(sInstrumentBank.regionCount()), static_cast<unsigned long>(sInstrumentBank.oscillatorCount()), static_cast<unsigned long>(sInstrumentBank.unsupportedPercussionCount()));
     if (!sSequenceArchive.load("assets/dataDir/SndData/Seqs/pikiseq.arc",
                                HEAD_pikiseq, kPikiSequenceHeaderSize)) {
         printf("[PC Port Error] Could not load JAudio sequence catalog: %s\n",
                sSequenceArchive.error().c_str());
         return false;
     }
-    printf("[PC Port] JAudio sequence catalog loaded: %zu sequences\n",
-           sSequenceArchive.size());
+    printf("[PC Port] JAudio sequence catalog loaded: %lu sequences\n", static_cast<unsigned long>(sSequenceArchive.size()));
     std::vector<u8> soundSequence;
     if (sSequenceArchive.read(0, soundSequence)) {
         sSEJamPlayer.start(soundSequence, 0);
@@ -1906,9 +1900,8 @@ void pc_audio_tick(void) {
                             const SampleVoice& v = sSampleVoices[handle & 0xFF];
                             std::snprintf(detail, sizeof detail,
                                           "  [paso %.5f base %.5f pistaTono %.3f  "
-                                          "izq %.3f der %.3f  pcm %zu fin %zu]",
-                                          v.step, v.baseStep, v.trackPitch, v.left, v.right,
-                                          v.samples ? v.samples->size() : 0u, v.endSample);
+                                          "izq %.3f der %.3f  pcm %lu fin %lu]",
+                                          v.step, v.baseStep, v.trackPitch, v.left, v.right, static_cast<unsigned long>(v.samples ? v.samples->size() : 0u), static_cast<unsigned long>(v.endSample));
                         }
                         if (traceAll || seen.insert(key).second)
                             printf("[PC Audio]   nota de evento: banco %u programa %u tecla %u "

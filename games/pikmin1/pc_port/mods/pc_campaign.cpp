@@ -390,7 +390,7 @@ bool pc_campaign_open(const PcCampaignPack& pack, int slot, int newPlayers, cons
 	sOpen      = true;
 	sNew.clear();
 	if (newPlayers) writeSlot(slotPath(pack.id, slot), sSlot);
-	fprintf(stderr, "[campaign] %s, ranura %d: día %d, %zu piezas\n", pack.id.c_str(), slot + 1, sSlot.day, sSlot.parts.size());
+	fprintf(stderr, "[campaign] %s, ranura %d: día %d, %lu piezas\n", pack.id.c_str(), slot + 1, sSlot.day, static_cast<unsigned long>(sSlot.parts.size()));
 	return true;
 }
 
@@ -531,8 +531,7 @@ int pc_campaign_day_end(const PcCampaignDayEnd& e)
 	withLimit.ending.dayLimit     = pc_campaign_day_limit();
 	sSlot.ending                  = nectar::campaignEnding(withLimit, sProgress, sPack.partTotal);
 	writeSlot(slotPath(sPack.id, sSlotIndex), sSlot);
-	fprintf(stderr, "[campaign] fin del día %d en %s: %zu piezas, %d Pikmin, %zu zonas nuevas%s\n", sSlot.day - 1, zs.run.empty() ? "?" : sSlot.zone.c_str(),
-	        sSlot.parts.size(), sSlot.pikmin[0] + sSlot.pikmin[1] + sSlot.pikmin[2], sNew.size(),
+	fprintf(stderr, "[campaign] fin del día %d en %s: %lu piezas, %d Pikmin, %lu zonas nuevas%s\n", sSlot.day - 1, zs.run.empty() ? "?" : sSlot.zone.c_str(), static_cast<unsigned long>(sSlot.parts.size()), sSlot.pikmin[0] + sSlot.pikmin[1] + sSlot.pikmin[2], static_cast<unsigned long>(sNew.size()),
 	        sSlot.ending == 1 ? " - CAMPAÑA COMPLETADA" : sSlot.ending == 0 ? " - SIN DÍAS" : "");
 	return sSlot.ending;
 }

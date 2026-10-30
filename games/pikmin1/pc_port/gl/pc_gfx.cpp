@@ -43,6 +43,14 @@
 void pc_netplay_load_keepalive(int site);
 
 #include "pc_opengl.h"
+#ifdef __vita__
+#include "../vita/pc_vita_glsl.h"
+#endif
+#ifdef __vita__
+// Keep the native extension declaration separate from desktop GL headers.
+extern "C" void vglSetSemanticBindingMode(GLenum mode);
+static constexpr GLenum kVitaGlobalShaderSemantics = 1; // VGL_MODE_GLOBAL
+#endif
 #ifdef __ANDROID__
 #include "../android/pc_android.h"
 #endif
@@ -492,10 +500,18 @@ static void check_uniform_write(GLint loc, const char* kind) {
     fflush(stdout);
 }
 
+// vitaGL uniform locations are addresses, not desktop integer indices.
+static bool uniform_location_valid(GLint loc) {
+#ifdef __vita__
+    return loc != -1 && loc != 0;
+#else
+    return loc >= 0;
+#endif
+}
 static void cached_uniform1i(GLint loc, GLint value) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
     auto& entry = sUC->c1i[loc];
     if (entry.generation == sUniformGeneration && entry.value == value) return;
     entry.generation = sUniformGeneration; entry.value = value;
@@ -503,9 +519,9 @@ static void cached_uniform1i(GLint loc, GLint value) {
     check_uniform_write(loc, "1i");
 }
 static void cached_uniform1f(GLint loc, GLfloat value) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
     auto& entry = sUC->c1f[loc];
     if (entry.generation == sUniformGeneration && entry.value == value) return;
     entry.generation = sUniformGeneration; entry.value = value;
@@ -513,9 +529,9 @@ static void cached_uniform1f(GLint loc, GLfloat value) {
     check_uniform_write(loc, "1f");
 }
 static void cached_uniform2i(GLint loc, GLint x, GLint y) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
     auto& entry = sUC->c2i[loc];
     const Uniform2iValue value { x, y };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -524,9 +540,9 @@ static void cached_uniform2i(GLint loc, GLint x, GLint y) {
     check_uniform_write(loc, "2i");
 }
 static void cached_uniform4i(GLint loc, GLint x, GLint y, GLint z, GLint w) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
     auto& entry = sUC->c4i[loc];
     const Uniform4iValue value { x, y, z, w };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -535,9 +551,9 @@ static void cached_uniform4i(GLint loc, GLint x, GLint y, GLint z, GLint w) {
     check_uniform_write(loc, "4i");
 }
 static void cached_uniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
-    if (loc < 0) return;
+    if (!uniform_location_valid(loc)) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
-    if (loc >= kUniformSetSize) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
+    if (static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
     auto& entry = sUC->c4f[loc];
     const Uniform4fValue value { x, y, z, w };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
@@ -546,9 +562,9 @@ static void cached_uniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat
     check_uniform_write(loc, "4f");
 }
 static void cached_uniform_mat4(GLint loc, GLsizei count, GLboolean transpose, const GLfloat* value) {
-    if (loc < 0 || !value) return;
+    if (!uniform_location_valid(loc) || !value) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); return; }
-    if (count != 1 || transpose != GL_FALSE || loc >= kUniformSetSize) {
+    if (count != 1 || transpose != GL_FALSE || static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) {
         pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); return;
     }
     auto& entry = sUC->cMat4[loc];
@@ -558,9 +574,9 @@ static void cached_uniform_mat4(GLint loc, GLsizei count, GLboolean transpose, c
     check_uniform_write(loc, "mat4");
 }
 static void cached_uniform_mat3(GLint loc, GLsizei count, GLboolean transpose, const GLfloat* value) {
-    if (loc < 0 || !value) return;
+    if (!uniform_location_valid(loc) || !value) return;
     if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); return; }
-    if (count != 1 || transpose != GL_FALSE || loc >= kUniformSetSize) {
+    if (count != 1 || transpose != GL_FALSE || static_cast<unsigned>(loc) >= unsigned(kUniformSetSize)) {
         pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); return;
     }
     auto& entry = sUC->cMat3[loc];
@@ -1490,8 +1506,8 @@ static void dump_dolphin_texture_name(const u8* image, u16 width, u16 height, u3
         return;
     }
     if (sDumpedTextureNames.insert(name).second) {
-        fprintf(sTextureNamesLog, "%s\t%u\t%u\t%u\t%zu\n",
-                name, unsigned(width), unsigned(height), format, textureSize);
+        fprintf(sTextureNamesLog, "%s\t%u\t%u\t%u\t%lu\n",
+                name, unsigned(width), unsigned(height), format, static_cast<unsigned long>(textureSize));
         fflush(sTextureNamesLog);
     }
 }
@@ -1738,6 +1754,10 @@ static unsigned char sDimWindowAlpha = 160;
 
 static bool ensure_dim_program()
 {
+#ifdef __vita__
+    // gl_VertexID overlay shaders await a Vita-compatible implementation.
+    return false;
+#endif
     if (sDimProgram && sDimVAO) return true;
     if (!glCreateShader_ptr || !glCreateProgram_ptr || !glGenVertexArrays_ptr) return false;
 
@@ -1802,6 +1822,10 @@ static GLint sOverlayRectLoc = -1, sOverlayColorLoc = -1, sOverlayRotLoc = -1, s
 
 static bool ensure_overlay_program()
 {
+#ifdef __vita__
+    // gl_VertexID overlay shaders await a Vita-compatible implementation.
+    return false;
+#endif
     if (sOverlayProgram && sOverlayVAO) return true;
     if (!glCreateShader_ptr || !glCreateProgram_ptr || !glGenVertexArrays_ptr) return false;
     static const char* kVert =
@@ -2253,7 +2277,25 @@ static const char* vShaderTail =
 
 // Fuente completa del shader de vértices: cabecera + iluminación GX compartida + cuerpo.
 static const std::string& vertex_shader_source() {
+#ifdef __vita__
+    // Temporary diagnostic: actual game positions and palettes, native Cg.
+    static const std::string diagnostic = R"CG(float4 main(float3 aPos : POSITION, float aMatrixSlot : TEXCOORD4,
+ uniform float4x4 uProjMtx, uniform float4x4 uPosMtx,
+ uniform int uUsePalette, uniform float4 uPosPalette[63]) : POSITION {
+ float4 p = float4(aPos, 1.0);
+ if (uUsePalette != 0) {
+  int r = int(clamp(floor(aMatrixSlot + 0.5), 0.0, 20.0)) * 3;
+  p = float4(dot(uPosPalette[r],p), dot(uPosPalette[r+1],p), dot(uPosPalette[r+2],p), 1.0);
+ } else { p = mul(uPosMtx, p); }
+ return mul(uProjMtx, p);
+})CG";
+    return diagnostic;
+#endif
+    #ifdef __vita__
+    static const std::string src = pc_vita_glsl(std::string(vShaderHead) + kGxLightingGlsl + vShaderTail, true);
+#else
     static const std::string src = std::string(vShaderHead) + kGxLightingGlsl + vShaderTail;
+#endif
     return src;
 }
 static const char* vShaderSrc = nullptr; // se rellena en pc_gfx_init (vertex_shader_source)
@@ -2506,7 +2548,18 @@ static const char* fShaderTail =
     "}\n";
 
 static const std::string& fragment_shader_source() {
+#ifdef __vita__
+    static const std::string diagnostic = "float4 main() : COLOR { return float4(1.0, 1.0, 0.0, 1.0); }";
+    return diagnostic;
+#endif
+#ifdef __vita__
+    // Do not compile the generic dynamic 16-stage evaluator at Vita startup.
+    // This boot program only establishes the shared vertex interface; every
+    // real draw below must use its exact specialised material program.
+    static const std::string src = pc_vita_glsl(pc_tev_build_fragment_source(PcTevShaderKey{}), false);
+#else
     static const std::string src = std::string(fShaderHead) + kGxLightingGlsl + kGxLightingFragGlsl + fShaderTail;
+#endif
     return src;
 }
 static const char* fShaderSrc = nullptr; // se rellena en pc_gfx_init (fragment_shader_source)
@@ -2649,12 +2702,21 @@ static void calculate_output_area(int drawableWidth, int drawableHeight,
 static void gl_error_checkpoint(const char* stage) {
     // Read the environment once. Two of these sit in the per-draw path, so a
     // getenv per call meant well over a thousand environment scans per frame.
+    #ifdef __vita__
+    static const bool enabled = true;
+    static unsigned vitaReports = 0;
+    if (vitaReports >= 32) return;
+#else
     static const bool enabled = std::getenv("PIKMIN_GL_CHECK") != nullptr;
+#endif
     if (!enabled) return;
     for (;;) {
         const GLenum error = glGetError();
         if (error == GL_NO_ERROR) break;
         const char* name = "UNKNOWN";
+#ifdef __vita__
+        ++vitaReports;
+#endif
         switch (error) {
             case GL_INVALID_ENUM: name = "GL_INVALID_ENUM"; break;
             case GL_INVALID_VALUE: name = "GL_INVALID_VALUE"; break;
@@ -2849,6 +2911,14 @@ static uint32_t sProgramBinaryMisses = 0;
 static double sShaderBuildMsThisFrame = 0.0;
 
 static void program_binary_init() {
+#if defined(__vita__)
+    // vitaGL: glBindAttribLocation on a program with no shader attached
+    // dereferences null (the cache path below binds before attaching). Disable
+    // this application cache so programs take the normal compile/attach/bind/
+    // link path. vitaGL may still use its own internal shader cache.
+    printf("[PC Port] Shader binary cache disabled on Vita\n");
+    return;
+#endif
     if (const char* v = std::getenv("PIKMIN_SHADER_CACHE")) {
         if (v[0] == '0') { printf("[PC Port] Shader binary cache disabled (PIKMIN_SHADER_CACHE=0)\n"); return; }
     }
@@ -2979,6 +3049,7 @@ static void depth_tex_image(int width, int height) {
 // The one Vertex layout, described to whichever GL_ARRAY_BUFFER is bound:
 // the streaming ring at init, the resident-mesh arena in its own VAO.
 static void setup_vertex_attribs() {
+    gl_error_checkpoint("before vertex attribute setup");
     glEnableVertexAttribArray_ptr(sAttrPos);
     glVertexAttribPointer_ptr(sAttrPos, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, x));
     if (sAttrNormal >= 0) {
@@ -2998,12 +3069,21 @@ static void setup_vertex_attribs() {
                                       sizeof(Vertex), reinterpret_cast<void*>(offset));
         }
     }
+    gl_error_checkpoint("after vertex attribute setup");
 }
 
 // Static VBO arena for resident meshes, with its own VAO so switching between
 // it and the streaming ring is one glBindVertexArray. Leaves the streaming
 // VAO and ring bound on return, which is what the rest of the file assumes.
 static void mesh_arena_init() {
+#ifdef __vita__
+    // The optional VAO arena fails on device; retain the working stream path
+    // until its Vita layout and allocation are validated independently.
+    sMeshDecodeCacheEnabled = false;
+    sMeshArenaReady = false;
+    printf("[Vita] Resident mesh cache disabled; using streamed geometry.\n");
+    return;
+#endif
     if (!sMeshDecodeCacheEnabled || !glGenVertexArrays_ptr || !glBindVertexArray_ptr) {
         sMeshDecodeCacheEnabled = false;
         return;
@@ -3018,12 +3098,20 @@ static void mesh_arena_init() {
     glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
     sMeshArenaUsed = 0;
     sMeshArenaReady = glGetError() == GL_NO_ERROR;
-    printf("[PC Port] Resident mesh arena: %s (%zu MB)\n", sMeshArenaReady ? "ready" : "unavailable",
-           sMeshArenaCapacity >> 20);
+    printf("[PC Port] Resident mesh arena: %s (%lu MB)\n", sMeshArenaReady ? "ready" : "unavailable", static_cast<unsigned long>(sMeshArenaCapacity >> 20));
     if (!sMeshArenaReady) sMeshDecodeCacheEnabled = false;
 }
 
 void pc_gfx_init(void) {
+#ifdef __vita__
+    // POSTPONED reports successful compilation before any native shader exists.
+    // GLOBAL compiles immediately and supports the shared vertex shader used
+    // by our independently generated material programs.
+    vglSetSemanticBindingMode(kVitaGlobalShaderSemantics);
+    printf("[Vita] Immediate shader compilation enabled (global semantics).\n");
+    printf("[Vita] SOLID GEOMETRY TEST: native Cg, yellow game geometry; textures and lighting bypassed.\n");
+    fflush(stdout);
+#endif
     state_touched();
     load_gl_functions();
     if (const char* value = std::getenv("PIKMIN_GPU_SKINNING")) sGpuSkinningEnabled = value[0] != '0';
@@ -3063,8 +3151,15 @@ void pc_gfx_init(void) {
     if (const char* value = std::getenv("PIKMIN_TEV_MAX_STAGES")) {
         sSpecialiseMaxStages = std::clamp(atoi(value), 0, 16);
     }
+#ifdef __vita__
+    sSpecialiseShaders = true;
+    sSpecialiseMaxStages = GX_MAXTEVSTAGE;
+    printf("[Vita] TEV materials compile individually; generic startup evaluator disabled.\n");
+#endif
+#ifndef __vita__
     printf("[PC Port] TEV specialisation: %s, up to %d stage(s); the rest use the ubershader.\n",
            sSpecialiseShaders ? "on" : "off", sSpecialiseMaxStages);
+#endif
     // The environment is the diagnostic shell: it overrides the saved setting
     // so an A/B on scale can be run without touching the player's config.
     if (const char* value = std::getenv("PIKMIN_RENDER_SCALE")) {
@@ -3097,9 +3192,16 @@ void pc_gfx_init(void) {
     }
 
     // Compile Shaders
-    GLuint vs = glCreateShader_ptr(GL_VERTEX_SHADER);
+    GLuint vs = glCreateShader_ptr(
+#ifdef __vita__
+        0x890E
+#else
+        GL_VERTEX_SHADER
+#endif
+    );
     vShaderSrc = vertex_shader_source().c_str();
     fShaderSrc = fragment_shader_source().c_str();
+#include "../vita/pc_vita_shader_probes.inc"
     glShaderSource_ptr(vs, 1, &vShaderSrc, NULL);
     glCompileShader_ptr(vs);
 
@@ -3114,10 +3216,20 @@ void pc_gfx_init(void) {
         else printf("[PC Port] Ubershader loaded from binary cache\n");
     }
 
-    GLuint fs = glCreateShader_ptr(GL_FRAGMENT_SHADER);
+    printf("[PC GX Init] Creating fragment shader...\n");
+    GLuint fs = glCreateShader_ptr(
+#ifdef __vita__
+        0x890F
+#else
+        GL_FRAGMENT_SHADER
+#endif
+    );
     if (!uberFromBinary) {
+        printf("[PC GX Init] Uploading fragment shader...\n");
         glShaderSource_ptr(fs, 1, &fShaderSrc, NULL);
+        printf("[PC GX Init] Compiling fragment shader...\n");
         glCompileShader_ptr(fs);
+        printf("[PC GX Init] Fragment compile call returned.\n");
     }
 
     // Report shader compile errors
@@ -3142,10 +3254,15 @@ void pc_gfx_init(void) {
         }
         return true;
     };
+    printf("[PC GX Init] Checking shader compile status...\n");
     bool vsOk = checkShader(vs, "vertex shader");
     bool fsOk = uberFromBinary || checkShader(fs, "fragment shader");
     if (!vsOk || !fsOk) {
         printf("[PC Port Error] Shader compilation failed - rendering will be broken!\n");
+#ifdef __vita__
+        fflush(stdout);
+        std::abort();
+#endif
     }
 
     if (!uberFromBinary) {
@@ -3157,7 +3274,9 @@ void pc_gfx_init(void) {
             glProgramParameteri_ptr(sShaderProgram, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
             glGetError();
         }
+        printf("[PC GX Init] Linking TEV program (Vita may compile GLSL here)...\n");
         glLinkProgram_ptr(sShaderProgram);
+        printf("[PC GX Init] TEV link call returned.\n");
     }
 
     {
@@ -3167,8 +3286,16 @@ void pc_gfx_init(void) {
             char log[4096] = { 0 };
             if (glGetProgramInfoLog_ptr) glGetProgramInfoLog_ptr(sShaderProgram, sizeof(log), NULL, log);
             printf("[PC Port Shader Error] Program link failed:\n%s\n", log);
+#ifdef __vita__
+            fflush(stdout);
+            std::abort();
+#endif
         } else {
+#ifdef __vita__
+            printf("[Vita] Bootstrap shaders compiled and linked OK\n");
+#else
             printf("[PC Port] TEV evaluator shaders compiled and linked OK\n");
+#endif
             if (!uberFromBinary) program_binary_store(sShaderProgram, uberKey);
         }
     }
@@ -3176,6 +3303,15 @@ void pc_gfx_init(void) {
     gl_error_checkpoint("ubershader link");
     query_program_locations(sShaderProgram, sLoc);
     gl_error_checkpoint("ubershader uniform locations");
+#ifdef __vita__
+    if (glGetAttribLocation_ptr) {
+        const char* names[] = {"aPos", "aColor", "aNormal", "aTexCoord0", "aTexCoord1", "aTexCoord2", "aTexCoord3", "aMatrixSlot"};
+        for (int i = 0; i < 8; ++i) {
+            GLint actual = glGetAttribLocation_ptr(sShaderProgram, names[i]);
+            printf("[Vita attribute] %s: expected %d, actual %d\n", names[i], i, int(actual));
+        }
+    }
+#endif
     sUberLocations = sLoc;
     sCurrentProgram = sShaderProgram;
     // The vertex shader is identical for every specialised program, so it is
@@ -3187,6 +3323,7 @@ void pc_gfx_init(void) {
     glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
     glBufferData_ptr(GL_ARRAY_BUFFER, sVboCapacity, nullptr, GL_STREAM_DRAW);
 
+#ifndef __vita__
     if (glGenFramebuffers_ptr && glBindFramebuffer_ptr && glFramebufferTexture2D_ptr
         && glGenRenderbuffers_ptr && glBindRenderbuffer_ptr && glRenderbufferStorage_ptr
         && glFramebufferRenderbuffer_ptr && glCheckFramebufferStatus_ptr && glBlitFramebuffer_ptr) {
@@ -3239,6 +3376,11 @@ void pc_gfx_init(void) {
                sNativeFramebufferReady ? "active" : "unavailable", sRenderScale,
                sDepthIsTexture ? "texture (readable)" : "renderbuffer (not readable)");
     }
+#else
+    sNativeFramebufferReady = false;
+    glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
+    printf("[Vita] Direct display framebuffer enabled; intermediate target and blit bypassed.\n");
+#endif
     // macOS only. Core profiles have no default VAO (name 0), so the streaming
     // ring's attribute layout must be recorded in its own VAO. The ring (sVBO)
     // is already bound, so the attributes refer to it. Elsewhere sStreamVAO stays
@@ -3430,9 +3572,7 @@ void pc_gfx_begin_frame(void) {
                 double(sPerfDisplayLists) / frames,
                 double(sPerfDisplayListBytes) / frames / (1024.0 * 1024.0),
                 double(sPerfTextureUploads) / frames);
-        fprintf(stderr, "[PERF MESH] %zu resident meshes, arena %zu/%zu MB, %u resets; stream ring %zu KB/frame (peak %zu KB of %zu MB)\n",
-                sResidentMeshes.size(), sMeshArenaUsed >> 20, sMeshArenaCapacity >> 20, sMeshResets,
-                sVboBytesLastFrame >> 10, sVboBytesPeakFrame >> 10, sVboCapacity >> 20);
+        fprintf(stderr, "[PERF MESH] %lu resident meshes, arena %lu/%lu MB, %u resets; stream ring %lu KB/frame (peak %lu KB of %lu MB)\n", static_cast<unsigned long>(sResidentMeshes.size()), static_cast<unsigned long>(sMeshArenaUsed >> 20), static_cast<unsigned long>(sMeshArenaCapacity >> 20), sMeshResets, static_cast<unsigned long>(sVboBytesLastFrame >> 10), static_cast<unsigned long>(sVboBytesPeakFrame >> 10), static_cast<unsigned long>(sVboCapacity >> 20));
         fprintf(stderr, "[PERF SHADER] %llu compiled this run, binary cache %s: %u hits, %u stored\n",
                 (unsigned long long)sPerfShaderCompiles, sProgramBinaryReady ? "on" : "off",
                 sProgramBinaryHits, sProgramBinaryMisses);
@@ -3545,6 +3685,15 @@ void pc_gfx_begin_frame(void) {
     // SDL sigue diciendo el tamaño de la pantalla; la superficie real es la
     // que pidió pc_window (ver pc_android_request_surface_size).
     pc_android_surface_size(&sDrawableWidth, &sDrawableHeight);
+#endif
+#ifdef __vita__
+    if (sDrawableWidth > 0 && sDrawableHeight > 0) {
+        sCurrentAspectRatio = calculate_aspect_ratio(sAspectRatioMode,
+            float(sDrawableWidth) / float(sDrawableHeight));
+        sRenderWidth = sDrawableWidth;
+        sRenderHeight = sDrawableHeight;
+        glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
+    }
 #endif
     if (sNativeFramebufferReady && sDrawableWidth > 0 && sDrawableHeight > 0) {
         // Calculate aspect ratio for this frame
@@ -3677,7 +3826,21 @@ static bool sLastDofReady = false;
 static float sViewInvP00 = 1.0f, sViewInvP11 = 1.0f;
 static float sViewNear = 1.0f, sViewFar = 15000.0f;
 
-void pc_gfx_set_post_effects(const PcPostEffects& fx) { sPostEffects = fx; }
+void pc_gfx_set_post_effects(const PcPostEffects& fx) {
+#ifdef __vita__
+    (void)fx;
+    // Enforce the bring-up profile even when saved settings enable effects.
+    sPostEffects = PcPostEffects{};
+    sPostEffects.fxaa = false;
+    sPostEffects.colourGrading = false;
+    sPostEffects.bloom = false;
+    sPostEffects.ssao = false;
+    sPostEffects.dof = false;
+    sPostEffects.shadows = false;
+#else
+    sPostEffects = fx;
+#endif
+}
 
 void pc_gfx_set_dof_focus(float viewDistance)
 {
@@ -4650,6 +4813,73 @@ void pc_gfx_end_swap_framebuffer(unsigned int bound) {
     if (glBindFramebuffer_ptr) glBindFramebuffer_ptr(GL_FRAMEBUFFER, GLuint(bound));
 }
 
+#ifdef __vita__
+// Native Cg diagnostic: independent of GX shaders, uniforms and textures.
+static void vita_present_probe() {
+    static bool attempted = false;
+    static GLuint program = 0, buffer = 0;
+    if (!attempted) {
+        attempted = true;
+        const char* sources[] = {
+            "float4 main(float3 aPos : POSITION) : POSITION { return float4(aPos, 1.0); }",
+            "float4 main() : COLOR { return float4(1.0, 0.0, 1.0, 1.0); }"
+        };
+        GLuint shaders[2] = {};
+        for (int i = 0; i < 2; ++i) {
+            shaders[i] = glCreateShader_ptr(i == 0 ? 0x890E : 0x890F);
+            glShaderSource_ptr(shaders[i], 1, &sources[i], nullptr);
+            glCompileShader_ptr(shaders[i]);
+            GLint ok = 0;
+            glGetShaderiv_ptr(shaders[i], GL_COMPILE_STATUS, &ok);
+            printf("[Vita Cg probe] stage %d compile: %d\n", i, int(ok));
+            if (!ok) {
+                char log[2048] = {};
+                glGetShaderInfoLog_ptr(shaders[i], sizeof log, nullptr, log);
+                printf("[Vita Cg probe] %s\n", log);
+                for (GLuint sh : shaders) if (sh) glDeleteShader_ptr(sh);
+                fflush(stdout);
+                return;
+            }
+        }
+        program = glCreateProgram_ptr();
+        for (GLuint sh : shaders) glAttachShader_ptr(program, sh);
+        glBindAttribLocation_ptr(program, 0, "aPos");
+        glLinkProgram_ptr(program);
+        GLint ok = 0;
+        glGetProgramiv_ptr(program, GL_LINK_STATUS, &ok);
+        for (GLuint sh : shaders) glDeleteShader_ptr(sh);
+        printf("[Vita Cg probe] link: %d; look for pink triangle at top right\n", int(ok));
+        fflush(stdout);
+        if (!ok) { glDeleteProgram_ptr(program); program = 0; return; }
+        const float vertices[] = {0.65f,0.65f,0, 0.95f,0.65f,0, 0.95f,0.95f,0};
+        glGenBuffers_ptr(1, &buffer);
+        glBindBuffer_ptr(GL_ARRAY_BUFFER, buffer);
+        glBufferData_ptr(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
+    }
+    if (!program) return;
+    GLint viewport[4]; glGetIntegerv(GL_VIEWPORT, viewport);
+    const GLenum caps[] = {GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST};
+    GLboolean enabled[4];
+    for (int i = 0; i < 4; ++i) { enabled[i] = glIsEnabled(caps[i]); glDisable(caps[i]); }
+    glBindFramebuffer_ptr(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, sDrawableWidth, sDrawableHeight);
+    glUseProgram_ptr(program);
+    glBindBuffer_ptr(GL_ARRAY_BUFFER, buffer);
+    glEnableVertexAttribArray_ptr(0);
+    glVertexAttribPointer_ptr(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    gl_error_checkpoint("native Cg triangle draw");
+    glBindBuffer_ptr(GL_ARRAY_BUFFER, sVBO);
+    setup_vertex_attribs();
+    glUseProgram_ptr(0);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    for (int i = 0; i < 4; ++i) if (enabled[i]) glEnable(caps[i]);
+    gl_program_cache_invalidate();
+    invalidate_uniform_cache();
+    invalidate_gl_pipeline_guards();
+}
+#endif
+
 void pc_gfx_present(void) {
     if (pc_gfx_null_skip()) return;
     if (!sNullDoomedTextures.empty()) {
@@ -4659,6 +4889,9 @@ void pc_gfx_present(void) {
         sNullDoomedTextures.clear();
     }
     pc_gfx_flush_batch();
+#ifdef __vita__
+    vita_present_probe();
+#endif
 #ifdef GL_TIME_ELAPSED
     if (sPerfGpuSceneActive) {
         glEndQuery_ptr(GL_TIME_ELAPSED);
@@ -6587,13 +6820,13 @@ static void filesel_debug_log_draw()
     }
     if (!seen && sFileSelDrawKeyCount < 12) {
         sFileSelDrawKeys[sFileSelDrawKeyCount++] = key;
-        printf("[PC Port] FILESEL draw: blend=%d src=%s dst=%s tevC=(%d,%d,%d,%d) tevA=(%d,%d,%d,%d) C0=(%d,%d,%d,%d) C1=(%d,%d,%d,%d) fog=%d prog=%u verts=%zu\n",
+        printf("[PC Port] FILESEL draw: blend=%d src=%s dst=%s tevC=(%d,%d,%d,%d) tevA=(%d,%d,%d,%d) C0=(%d,%d,%d,%d) C1=(%d,%d,%d,%d) fog=%d prog=%u verts=%lu\n",
                blendOn ? 1 : 0, gl_blend_name(glSrc), gl_blend_name(glDst),
                int(st.colorIn[0]), int(st.colorIn[1]), int(st.colorIn[2]), int(st.colorIn[3]),
                int(st.alphaIn[0]), int(st.alphaIn[1]), int(st.alphaIn[2]), int(st.alphaIn[3]),
                c0r, c0g, c0b, c0a, c1r, c1g, c1b, c1a,
                (sFogRequested && sFogAllowed) ? 1 : 0,
-               unsigned(sCurrentProgram), sVertexStream.size());
+               unsigned(sCurrentProgram), static_cast<unsigned long>(sVertexStream.size()));
         fflush(stdout);
     }
 
@@ -6921,7 +7154,14 @@ static GLuint compile_specialised_program(const PcTevShaderKey& key) {
     if (!glCreateShader_ptr || !sSharedVertexShader) return 0;
 
     const double buildT0 = submit_clock_ms();
+#ifdef __vita__
+    printf("[Vita Shader] Begin material: %u TEV stage(s)\n", unsigned(key.numStages));
+#endif
+    #ifdef __vita__
+    const std::string source = "float4 main() : COLOR { return float4(1.0, 1.0, 0.0, 1.0); }"; // native Cg solid geometry diagnostic
+#else
     const std::string source = pc_tev_build_fragment_source(key);
+#endif
     const char* sourcePtr = source.c_str();
 
     // Cached binary first: no compile, no link, a few hundred microseconds.
@@ -6936,7 +7176,13 @@ static GLuint compile_specialised_program(const PcTevShaderKey& key) {
         glDeleteProgram_ptr(program);
     }
 
-    GLuint fragment = glCreateShader_ptr(GL_FRAGMENT_SHADER);
+    GLuint fragment = glCreateShader_ptr(
+#ifdef __vita__
+        0x890F
+#else
+        GL_FRAGMENT_SHADER
+#endif
+    );
     glShaderSource_ptr(fragment, 1, &sourcePtr, nullptr);
     glCompileShader_ptr(fragment);
     GLint status = 0;
@@ -6997,6 +7243,10 @@ static void use_program_for_current_state() {
     state_touched();
     if (!sSpecialiseShaders || sSpecialiseFailed
         || int(sNumTevStages) > sSpecialiseMaxStages) {
+#ifdef __vita__
+        fprintf(stderr, "[Vita Shader] Exact material shader unavailable; refusing a wrong-colour fallback.\n");
+        std::abort();
+#endif
         if (sCurrentProgram != sShaderProgram) {
             glUseProgram_ptr(sShaderProgram);
             select_uniform_cache(sShaderProgram);
@@ -7034,13 +7284,16 @@ static void use_program_for_current_state() {
     const GLuint program = compile_specialised_program(key);
     // Cada compilación es un tirón en móvil (decenas o cientos de ms): se
     // deja constancia con su coste para poder correlacionarla con parones.
-    printf("[PC GX] specialised TEV program #%zu: %u stages, %.1f ms%s\n",
-           sTevPrograms.size() + 1, (unsigned)sNumTevStages, submit_clock_ms() - compileT0,
+    printf("[PC GX] specialised TEV program #%lu: %u stages, %.1f ms%s\n", static_cast<unsigned long>(sTevPrograms.size() + 1), (unsigned)sNumTevStages, submit_clock_ms() - compileT0,
            program ? "" : " (FAILED)");
     // A burst of these blocks one netplay tick; between two programs the
     // netplay keep-alive polls the network.
     if (pc_netplay_load_keepalive != nullptr) pc_netplay_load_keepalive(pc_netplay_loadguard::kSiteShader);
     if (!program) {
+#ifdef __vita__
+        fprintf(stderr, "[Vita Shader] Material failed; inspect the shader errors above.\n");
+        std::abort();
+#endif
         // One failure is treated as a permanent fallback: a configuration this
         // generator cannot express must not be retried for every draw.
         sSpecialiseFailed = true;
@@ -7091,7 +7344,12 @@ static void use_program_for_current_state() {
 
 void pc_gfx_set_shader_specialisation(bool enabled) {
     pc_gfx_flush_batch();  // changes which program the next batch compiles to
+#ifdef __vita__
+    (void)enabled;
+    sSpecialiseShaders = true;
+#else
     sSpecialiseShaders = enabled;
+#endif
 }
 
 bool pc_gfx_get_shader_specialisation(void) {
@@ -7171,7 +7429,7 @@ static void report_desync(const char* what, const void* list, size_t offset, u32
     if (sDesyncReports >= 8) return;
     ++sDesyncReports;
     const u8* base = static_cast<const u8*>(list);
-    fprintf(stderr, "[PC GX] DESYNC #%d %s at byte %zu/%u  head:", sDesyncReports, what, offset, nbytes);
+    fprintf(stderr, "[PC GX] DESYNC #%d %s at byte %lu/%u  head:", sDesyncReports, what, static_cast<unsigned long>(offset), nbytes);
     for (size_t i = 0; i < 12 && i < nbytes; ++i) fprintf(stderr, " %02X", base[i]);
     fprintf(stderr, "  near:");
     const size_t from = offset > 6 ? offset - 6 : 0;
@@ -7754,7 +8012,7 @@ void pc_gfx_flush_submit_stats(void) {
 // `slots` slots a mesh actually references, and only when one of those
 // matrices was reloaded since the last upload to this program.
 static void upload_matrix_palette(int slots) {
-    if (sLoc.posPalette < 0 && sLoc.nrmPalette < 0) return;
+    if (!uniform_location_valid(sLoc.posPalette) && !uniform_location_valid(sLoc.nrmPalette)) return;
     if (slots < 1) slots = 1;
     if (slots > kPaletteSlots) slots = kPaletteSlots;
     // Fingerprint: which program, which slots, and their revisions.
@@ -7782,8 +8040,8 @@ static void upload_matrix_palette(int slots) {
             nrm[slot * 3 + r][2] = n[6 + r]; nrm[slot * 3 + r][3] = 0.0f;
         }
     }
-    if (sLoc.posPalette >= 0) glUniform4fv_ptr(sLoc.posPalette, slots * 3, &pos[0][0]);
-    if (sLoc.nrmPalette >= 0) glUniform4fv_ptr(sLoc.nrmPalette, slots * 3, &nrm[0][0]);
+    if (uniform_location_valid(sLoc.posPalette)) glUniform4fv_ptr(sLoc.posPalette, slots * 3, &pos[0][0]);
+    if (uniform_location_valid(sLoc.nrmPalette)) glUniform4fv_ptr(sLoc.nrmPalette, slots * 3, &nrm[0][0]);
 }
 
 // Programs the GL pipeline for the current GX material state: program,
@@ -7808,7 +8066,7 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     };
     glUniformMatrix4fv_ptr(sLoc.posMtx, 1, GL_FALSE,
                           sVerticesPretransformed ? identity : sPosMatrix[sCurrentPosMtxId]);
-    if (sLoc.usePalette >= 0) glUniform1i_ptr(sLoc.usePalette, sVertexUsesPalette ? 1 : 0);
+    if (uniform_location_valid(sLoc.usePalette)) glUniform1i_ptr(sLoc.usePalette, sVertexUsesPalette ? 1 : 0);
     if (sVertexUsesPalette) upload_matrix_palette(sPaletteSlotsNeeded);
     glUniform4f_ptr(sLoc.materialColor, sChannels[0].matColor[0], sChannels[0].matColor[1],
                     sChannels[0].matColor[2], sChannels[0].matColor[3]);
@@ -7819,8 +8077,8 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     glUniform1i_ptr(sLoc.alphaOp, static_cast<int>(sAlphaOp));
     glUniform1f_ptr(sLoc.alphaRef0, sAlphaRef0);
     glUniform1f_ptr(sLoc.alphaRef1, sAlphaRef1);
-    if (sLoc.outTint >= 0) glUniform3f_ptr(sLoc.outTint, sOutTint[0], sOutTint[1], sOutTint[2]);
-    if (sLoc.perPixel >= 0) glUniform1i_ptr(sLoc.perPixel, sPerPixelLighting ? 1 : 0);
+    if (uniform_location_valid(sLoc.outTint)) glUniform3f_ptr(sLoc.outTint, sOutTint[0], sOutTint[1], sOutTint[2]);
+    if (uniform_location_valid(sLoc.perPixel)) glUniform1i_ptr(sLoc.perPixel, sPerPixelLighting ? 1 : 0);
     glUniform4f_ptr(sLoc.tevPrev, sTevRegisters[GX_TEVPREV][0], sTevRegisters[GX_TEVPREV][1],
                    sTevRegisters[GX_TEVPREV][2], sTevRegisters[GX_TEVPREV][3]);
     glUniform4f_ptr(sLoc.tevReg0, sTevRegisters[GX_TEVREG0][0], sTevRegisters[GX_TEVREG0][1],
@@ -7952,8 +8210,8 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
                     uvMax[tc][1] = std::max(uvMax[tc][1], vertex.tex[tc][1]);
                 }
             }
-            fprintf(stderr, "[PERF TEVGEOM%u %s #%u] verts=%zu ndc=(%.3f,%.3f)-(%.3f,%.3f)",
-                    unsigned(sNumTevStages), pipelineScope->name, pipelineIndex, sVertexStream.size(),
+            fprintf(stderr, "[PERF TEVGEOM%u %s #%u] verts=%lu ndc=(%.3f,%.3f)-(%.3f,%.3f)",
+                    unsigned(sNumTevStages), pipelineScope->name, pipelineIndex, static_cast<unsigned long>(sVertexStream.size()),
                     ndcMinX, ndcMinY, ndcMaxX, ndcMaxY);
             bool reportedTc[4] = {};
             for (u8 stage = 0; stage < sNumTevStages; ++stage) {
@@ -8054,12 +8312,12 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
         const int packedAlphaOp = static_cast<int>(st.alphaOp) | (st.alphaClamp ? 0x100 : 0);
         glUniform4i_ptr(sLoc.tevCOps[stage], packedColorOp, st.colorBias, st.colorScale, st.colorOutReg);
         glUniform4i_ptr(sLoc.tevAOps[stage], packedAlphaOp, st.alphaBias, st.alphaScale, st.alphaOutReg);
-        if (sLoc.tevChan[stage] >= 0) {
+        if (uniform_location_valid(sLoc.tevChan[stage])) {
             // GX_COLOR1/GX_COLOR1A1 stages sample the specular channel's raster.
             glUniform4i_ptr(sLoc.tevChan[stage], st.rasChannel, 0, 0, 0);
         }
         // TEV swap mode
-        if (sLoc.tevSwapSel[stage] >= 0) {
+        if (uniform_location_valid(sLoc.tevSwapSel[stage])) {
             int rasSel = (int)sTevRasSwapSel[stage];
             int texSel = (int)sTevTexSwapSel[stage];
             glUniform2i_ptr(sLoc.tevSwapSel[stage], rasSel, texSel);
@@ -8067,7 +8325,7 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     }
     // TEV swap mode tables
     for (int t = 0; t < 4; ++t) {
-        if (sLoc.tevSwapTable[t] >= 0) {
+        if (uniform_location_valid(sLoc.tevSwapTable[t])) {
             glUniform4i_ptr(sLoc.tevSwapTable[t],
                 (int)sTevSwapModes[t].red,
                 (int)sTevSwapModes[t].green,
@@ -8102,7 +8360,7 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
     if (profilingSubmit) sSubmitTexBindMs += submit_clock_ms() - texT0;
 
     // Upload lighting
-    if (sLoc.nrmMtx >= 0) {
+    if (uniform_location_valid(sLoc.nrmMtx)) {
         static const float identityNrm[9] = {
             1.0f, 0.0f, 0.0f,
             0.0f, 1.0f, 0.0f,
@@ -8149,12 +8407,12 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             }
         }
     }
-    if (sLoc.numLights >= 0) glUniform1i_ptr(sLoc.numLights, numLights);
-    if (sLoc.ambColor >= 0) glUniform4f_ptr(sLoc.ambColor, ambR, ambG, ambB, ambA);
-    if (sLoc.chan0En >= 0) glUniform1i_ptr(sLoc.chan0En, sChannels[0].enabled ? 1 : 0);
-    if (sLoc.chan0AlphaEn >= 0) glUniform1i_ptr(sLoc.chan0AlphaEn, alphaLit0 ? 1 : 0);
-    if (sLoc.chan0AlphaDiff >= 0) glUniform1i_ptr(sLoc.chan0AlphaDiff, (int)sChannels[0].alphaDiffFn);
-    if (sLoc.chan0AttnFn >= 0) glUniform1i_ptr(sLoc.chan0AttnFn, (int)sChannels[0].attnFn);
+    if (uniform_location_valid(sLoc.numLights)) glUniform1i_ptr(sLoc.numLights, numLights);
+    if (uniform_location_valid(sLoc.ambColor)) glUniform4f_ptr(sLoc.ambColor, ambR, ambG, ambB, ambA);
+    if (uniform_location_valid(sLoc.chan0En)) glUniform1i_ptr(sLoc.chan0En, sChannels[0].enabled ? 1 : 0);
+    if (uniform_location_valid(sLoc.chan0AlphaEn)) glUniform1i_ptr(sLoc.chan0AlphaEn, alphaLit0 ? 1 : 0);
+    if (uniform_location_valid(sLoc.chan0AlphaDiff)) glUniform1i_ptr(sLoc.chan0AlphaDiff, (int)sChannels[0].alphaDiffFn);
+    if (uniform_location_valid(sLoc.chan0AttnFn)) glUniform1i_ptr(sLoc.chan0AttnFn, (int)sChannels[0].attnFn);
 
     // Channel 1 (typically specular) feeds stages whose TEV order selects it.
     int numLights1 = 0;
@@ -8176,19 +8434,19 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             }
         }
     }
-    if (sLoc.numLights1 >= 0) glUniform1i_ptr(sLoc.numLights1, numLights1);
-    if (sLoc.ambColor1 >= 0) glUniform4f_ptr(sLoc.ambColor1, a1r, a1g, a1b, a1a);
-    if (sLoc.chan1En >= 0) glUniform1i_ptr(sLoc.chan1En, sChannels[1].enabled ? 1 : 0);
-    if (sLoc.chan1AttnFn >= 0) glUniform1i_ptr(sLoc.chan1AttnFn, (int)sChannels[1].attnFn);
+    if (uniform_location_valid(sLoc.numLights1)) glUniform1i_ptr(sLoc.numLights1, numLights1);
+    if (uniform_location_valid(sLoc.ambColor1)) glUniform4f_ptr(sLoc.ambColor1, a1r, a1g, a1b, a1a);
+    if (uniform_location_valid(sLoc.chan1En)) glUniform1i_ptr(sLoc.chan1En, sChannels[1].enabled ? 1 : 0);
+    if (uniform_location_valid(sLoc.chan1AttnFn)) glUniform1i_ptr(sLoc.chan1AttnFn, (int)sChannels[1].attnFn);
     // Specular half-vector: light 7's dir field (offset 0x34) holds it.
     if (sChannels[1].enabled && sChannels[1].attnFn == GX_AF_SPEC) {
         u32 mask1 = sChannels[1].lightMask;
         for (int i = 7; i < 8; i++) {
             if (mask1 & (1u << i) && sLights[i].active) {
-                if (sLoc.specHalf1 >= 0) {
+                if (uniform_location_valid(sLoc.specHalf1)) {
                     glUniform4f_ptr(sLoc.specHalf1, sLights[i].dir[0], sLights[i].dir[1], sLights[i].dir[2], 0.0f);
                 }
-                if (sLoc.specAttn1 >= 0) {
+                if (uniform_location_valid(sLoc.specAttn1)) {
                     glUniform4f_ptr(sLoc.specAttn1, sLights[i].a[0], sLights[i].a[1], sLights[i].a[2], 0.0f);
                 }
                 
@@ -8196,16 +8454,16 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             }
         }
     }
-    if (sLoc.materialColor1 >= 0)
+    if (uniform_location_valid(sLoc.materialColor1))
         glUniform4f_ptr(sLoc.materialColor1, sChannels[1].matColor[0], sChannels[1].matColor[1],
                         sChannels[1].matColor[2], sChannels[1].matColor[3]);
     // Only present in programs built with fog in the key, so the locations are
     // -1 everywhere else and this costs nothing on the draws that have none.
-    if (sLoc.fogParams >= 0)
+    if (uniform_location_valid(sLoc.fogParams))
         glUniform4f_ptr(sLoc.fogParams, sFogStart, sFogEnd, sFogNear, sFogFar);
-    if (sLoc.fogColour >= 0)
+    if (uniform_location_valid(sLoc.fogColour))
         glUniform4f_ptr(sLoc.fogColour, sFogColour[0], sFogColour[1], sFogColour[2], 1.0f);
-    if (sLoc.useMaterialRgb1 >= 0)
+    if (uniform_location_valid(sLoc.useMaterialRgb1))
         glUniform1i_ptr(sLoc.useMaterialRgb1, sChannels[1].matSrc == GX_SRC_REG ? 1 : 0);
 
     // Texture coordinate generation for every GX slot. TEX0-TEX7 sources are
@@ -8221,8 +8479,8 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
             else if (src >= GX_TG_TEXCOORD0 && src <= GX_TG_TEXCOORD6)
                 mode = 11 + int(src - GX_TG_TEXCOORD0);
         }
-        if (sLoc.tcMode[slot] >= 0) glUniform1i_ptr(sLoc.tcMode[slot], mode);
-        if (mode != 0 && sLoc.tcMtx[slot] >= 0) {
+        if (uniform_location_valid(sLoc.tcMode[slot])) glUniform1i_ptr(sLoc.tcMode[slot], mode);
+        if (mode != 0 && uniform_location_valid(sLoc.tcMtx[slot])) {
             u32 mtxIdx = (slot < 8) ? sTexCoordGen[slot].mtxIdx : 0;
             if (mtxIdx >= 64) mtxIdx = 0;
             glUniformMatrix4fv_ptr(sLoc.tcMtx[slot], 1, GL_FALSE, sTexMatrices[mtxIdx]);
@@ -8311,8 +8569,7 @@ void pc_gfx_end(void) {
     static bool reportedFirstDraw = false;
     if (!reportedFirstDraw) {
         GLenum error = glGetError();
-        printf("[PC Port] First GX draw: %zu vertices, GL status 0x%04x\n",
-               sVertexStream.size(), static_cast<unsigned>(error));
+        printf("[PC Port] First GX draw: %lu vertices, GL status 0x%04x\n", static_cast<unsigned long>(sVertexStream.size()), static_cast<unsigned>(error));
         if (error != GL_NO_ERROR) {
             const char* errStr = "UNKNOWN";
             switch (error) {
@@ -9003,7 +9260,7 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
     if (const size_t readable = pc_host_readable_bytes(list, nbytes); readable < nbytes) {
         static int reported = 0;
         if (reported++ < 8)
-            fprintf(stderr, "[PC GFX] display list %p: %u bytes declared, %zu readable\n", list, nbytes, readable);
+            fprintf(stderr, "[PC GFX] display list %p: %u bytes declared, %lu readable\n", list, nbytes, static_cast<unsigned long>(readable));
         nbytes = u32(readable);
         if (nbytes == 0) return;
     }
@@ -9143,8 +9400,8 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
                           size_t(cursor - static_cast<const u8*>(list) - 1), nbytes);
             flushPendingStrip();
             if (!reportedUnsupportedCommand) {
-                fprintf(stderr, "[PC GX] Unsupported display-list command 0x%02X at byte %zu/%u\n",
-                        command, size_t(cursor - static_cast<const u8*>(list) - 1), nbytes);
+                fprintf(stderr, "[PC GX] Unsupported display-list command 0x%02X at byte %lu/%u\n",
+                        command, static_cast<unsigned long>(size_t(cursor - static_cast<const u8*>(list) - 1)), nbytes);
                 reportedUnsupportedCommand = true;
             }
             break;
@@ -9283,11 +9540,10 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
                             (void)m;
                             const VertexFormatState& pf = sVtxFormats[format][GX_VA_POS];
                             fprintf(stderr,
-                                    "[PC GX] WILD #%d pos idx=%u base=%p stride=%u -> elem=%p (offset %zu)  fmt: count=%d type=%d frac=%u\n",
+                                    "[PC GX] WILD #%d pos idx=%u base=%p stride=%u -> elem=%p (offset %lu)  fmt: count=%d type=%d frac=%u\n",
                                     reports, unsigned(sLastPosIndex), (const void*)sLastPosBase,
                                     unsigned(sLastPosStride),
-                                    (const void*)(sLastPosBase + size_t(sLastPosIndex) * sLastPosStride),
-                                    size_t(sLastPosIndex) * sLastPosStride,
+                                    (const void*)(sLastPosBase + size_t(sLastPosIndex) * sLastPosStride), static_cast<unsigned long>(size_t(sLastPosIndex) * sLastPosStride),
                                     int(pf.count), int(pf.type), unsigned(pf.frac));
                             fprintf(stderr,
                                     "[PC GX] WILD #%d POS array last set on frame %llu (now %llu, %llu frames ago); set #%llu of %llu total\n",
@@ -9315,9 +9571,8 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
                                 wstride += bytes;
                                 fprintf(stderr, " a%d=%s(%u)", a, kind, bytes);
                             }
-                            fprintf(stderr, "  stride=%u  vat=%u  vert %u/%u at list byte %zu/%u\n",
-                                    wstride, unsigned(format), unsigned(vertex), unsigned(vertexCount),
-                                    size_t(vertexStart - static_cast<const u8*>(list)), nbytes);
+                            fprintf(stderr, "  stride=%u  vat=%u  vert %u/%u at list byte %lu/%u\n",
+                                    wstride, unsigned(format), unsigned(vertex), unsigned(vertexCount), static_cast<unsigned long>(size_t(vertexStart - static_cast<const u8*>(list))), nbytes);
                             fprintf(stderr, "[PC GX] WILD #%d stream:", reports);
                             for (int b = 0; b < 20 && vertexStart + b < end; ++b) {
                                 fprintf(stderr, " %02X", vertexStart[b]);
@@ -9418,8 +9673,7 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
             report_desync("truncated vertex", list,
                           size_t(cursor - static_cast<const u8*>(list)), nbytes);
             if (!reportedMalformedVertex) {
-                fprintf(stderr, "[PC GX] Malformed vertex stream at byte %zu/%u (format %u)\n",
-                        size_t(cursor - static_cast<const u8*>(list)), nbytes, format);
+                fprintf(stderr, "[PC GX] Malformed vertex stream at byte %lu/%u (format %u)\n", static_cast<unsigned long>(size_t(cursor - static_cast<const u8*>(list))), nbytes, format);
                 reportedMalformedVertex = true;
             }
             sInPrimitive = false;

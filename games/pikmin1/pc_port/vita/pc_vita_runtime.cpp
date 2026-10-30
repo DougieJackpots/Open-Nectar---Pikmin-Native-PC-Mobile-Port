@@ -37,6 +37,7 @@ bool pc_vita_init_storage()
     setvbuf(stdout, nullptr, _IONBF, 0);
     setvbuf(stderr, nullptr, _IONBF, 0);
     std::puts("\n[Vita] Experimental game startup; not validated for gameplay.");
+    std::puts("[Vita] Game target: 30 FPS / 33.33 ms; display refresh is separate.");
     SceKernelFreeMemorySizeInfo memory = {};
     memory.size = sizeof(memory);
     if (sceKernelGetFreeMemorySize(&memory) == 0)

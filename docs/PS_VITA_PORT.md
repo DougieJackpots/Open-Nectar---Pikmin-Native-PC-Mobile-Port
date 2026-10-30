@@ -14,6 +14,10 @@ The initial source base was `dc92d469517aaf899c4a6be849936e274a9c7303`.
 - SDL's pinned Vita/vitaGL backend supplies the context and GL function lookup.
   The existing GX-to-GL renderer links against vitaGL. This does not prove that
   its GLSL programs compile or render correctly on the device.
+- Vita is locked to the original 30 FPS mode (33.33 ms per game tick), including
+  title/menu sections. Imported 60/120/monitor settings are ignored and the FPS
+  selector stays at 30. A 60 Hz display report is not a measured game FPS.
+  Sustained 30 FPS still requires device performance testing.
 - The Vita window defaults to 960x544. Initial streaming VBO allocation is
   4 MiB and the resident mesh arena is 8 MiB, versus desktop defaults of
   16 MiB and 128 MiB. Streaming can still grow for a large draw; these numbers
@@ -122,3 +126,46 @@ pauses, and Select opens settings. These mappings need device verification.
 visual correctness checks, peak-memory measurements, controller testing,
 audio, save/reload, level transitions and sustained gameplay. A generated VPK
 alone is not evidence that any of those work.
+
+## First device log
+
+The first attached log confirms that storage, assets, SDL initialization and the
+Vita GPU/context are reached. It ends after shader binary-cache initialization,
+before the game loop. It therefore does not establish a gameplay frame rate or
+identify the failing shader call. Startup markers now bracket fragment shader
+creation/upload/compile, status queries and TEV program linking to narrow down
+the next device test. The earlier 60 Hz line describes display refresh only.
+
+The device report also describes the vitaGL logo freezing partway through.
+This is consistent with the last logged stage but does not prove which call
+hung or crashed. The next developer build avoids compiling the generic dynamic
+16-stage TEV evaluator at startup. It uses a small one-stage bootstrap program
+and compiles the exact material shaders as needed. All supported TEV stage
+counts remain available. A material compile failure stops with diagnostics
+rather than using the bootstrap shader to render incorrect materials. This is
+a targeted mitigation for the suspected compiler bottleneck, not a confirmed
+fix; vertex compilation, the translator or another startup call may still fail.
+
+The attached device crash report shows a main-thread data abort while the
+vitaGL splash thread waits. The supplied renderer change disables the application
+program-binary cache on Vita: its cache lookup binds vertex attributes before
+attaching a vertex shader, which dereferences a null shader in vitaGL. Both the
+startup and material cache lookup paths are skipped; vitaGL internal caching is
+unaffected. This fixes an unsafe call order, but the device crash is not yet
+confirmed resolved. The dump PC and displayed instruction addresses disagree,
+so its function labels alone do not establish the failing instruction.
+
+## Current shader diagnostic build
+
+The device log confirms that the ES 1.00 bootstrap fragment passes compilation,
+while the shared vertex shader fails with an empty compiler log. Vita uses
+immediate compilation with GLOBAL semantics, an ES 1.00 text adapter, bounded
+lighting loops, and disabled post-effects/dim/sprite overlays. Startup runs
+small compiler probes plus the real vertex shader and a float-clamp variant.
+Probe results are flushed to pikmin.log; passing text tests does not establish
+device compiler compatibility. The real submitted shader still contains its
+integer clamp so the probe comparison can isolate that failure. This is a
+diagnostic package, not a confirmed boot or 30 FPS gameplay build.
+
+Pushing vita/shader-diagnostics starts the core and experimental-package jobs.
+Download pikmin1-vita-experimental-unvalidated from the completed workflow run.
