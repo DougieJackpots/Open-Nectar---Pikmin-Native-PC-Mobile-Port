@@ -227,8 +227,8 @@ bool pc_audio_play_stx(const char* path) {
     sStreamVoice.cursor = 0;
     sStreamVoice.active = true;
     SDL_UnlockAudioDevice(sAudioDevice);
-    printf("[PC Port] Playing STX stream: %s (%u Hz, %zu frames)\n",
-           path, static_cast<unsigned>(sampleRate), outputFrames);
+    printf("[PC Port] Playing STX stream: %s (%u Hz, %lu frames)\n",
+           path, static_cast<unsigned>(sampleRate), static_cast<unsigned long>(outputFrames));
     return true;
 }
 

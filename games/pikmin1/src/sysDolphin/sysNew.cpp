@@ -130,16 +130,14 @@ void piki_pc_dump_alloc_stats(void)
 	static const char* kClassNames[SIZE_CLASS_COUNT] = {
 		"<1K", "1K-16K", "16K-64K", "64K-256K", "256K-1M", "1M-8M", "8M-64M", ">64M"
 	};
-	fprintf(stderr, "[PC Alloc] largest single block %zu bytes\n", sLargestBlock);
+	fprintf(stderr, "[PC Alloc] largest single block %lu bytes\n", static_cast<unsigned long>(sLargestBlock));
 	for (size_t i = 0; i < SIZE_CLASS_COUNT; ++i) {
 		if (sClassCount[i] == 0) continue;
-		fprintf(stderr, "[PC Alloc]   %-8s %zu live, %zu MB\n",
-		        kClassNames[i], sClassCount[i], sClassBytes[i] >> 20);
+		fprintf(stderr, "[PC Alloc]   %-8s %lu live, %lu MB\n",
+		        kClassNames[i], static_cast<unsigned long>(sClassCount[i]), static_cast<unsigned long>(sClassBytes[i] >> 20));
 	}
 	fprintf(stderr,
-	        "[PC Alloc] live=%zu bytes=%zu peak=%zu/%zu total=%zu frees=%zu unknown-frees=%zu\n",
-	        sLiveAllocations, sLiveBytes, sPeakAllocations, sPeakBytes,
-	        sTotalAllocations, sTotalFrees, sUnknownFrees);
+	        "[PC Alloc] live=%lu bytes=%lu peak=%lu/%lu total=%lu frees=%lu unknown-frees=%lu\n", static_cast<unsigned long>(sLiveAllocations), static_cast<unsigned long>(sLiveBytes), static_cast<unsigned long>(sPeakAllocations), static_cast<unsigned long>(sPeakBytes), static_cast<unsigned long>(sTotalAllocations), static_cast<unsigned long>(sTotalFrees), static_cast<unsigned long>(sUnknownFrees));
 }
 
 void* piki_pc_alloc(size_t size)
@@ -176,7 +174,7 @@ void* piki_pc_alloc(size_t size)
 		               : std::malloc(sizeof(BootBlockHeader) + size);
 	}
 	if (!raw) {
-		ERROR("allocation of %zu bytes failed", size);
+		ERROR("allocation of %lu bytes failed", static_cast<unsigned long>(size));
 		throw std::bad_alloc();
 	}
 
@@ -210,8 +208,7 @@ void* piki_pc_alloc(size_t size)
                         static_cast<unsigned long>(sLiveBytes >> 20),
                         static_cast<unsigned long>(sLiveAllocations));
 #else
-				fprintf(stderr, "[PC Alloc] big block %zu MB (live now %zu MB in %zu blocks)\n",
-				        size >> 20, (sLiveBytes) >> 20, sLiveAllocations);
+				fprintf(stderr, "[PC Alloc] big block %lu MB (live now %lu MB in %lu blocks)\n", static_cast<unsigned long>(size >> 20), static_cast<unsigned long>((sLiveBytes) >> 20), static_cast<unsigned long>(sLiveAllocations));
 #endif
 			}
 		}
@@ -295,7 +292,7 @@ void* System::alloc(size_t size)
 	void* result = nullptr;
 	System* system = gsys;
 	if (!system) {
-		fprintf(stderr, "[PC Port Fatal] System::alloc(%zu) called without an active System instance\n", size);
+		fprintf(stderr, "[PC Port Fatal] System::alloc(%lu) called without an active System instance\n", static_cast<unsigned long>(size));
 		abort();
 	}
 	if (size & 0x3) {

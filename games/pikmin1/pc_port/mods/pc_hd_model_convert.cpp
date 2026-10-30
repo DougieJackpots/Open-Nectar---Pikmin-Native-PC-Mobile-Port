@@ -706,7 +706,7 @@ void writePack(const fs::path& output, const std::vector<Bone>& bones, const std
 	}
 	size_t total = 0;
 	for (const Part& p : parts) total += p.vertices.size();
-	std::printf("[HD Models] wrote %s: %zu vertices, %zu parts (v%u)\n", output.string().c_str(), total, parts.size(), version);
+	std::printf("[HD Models] wrote %s: %lu vertices, %lu parts (v%u)\n", output.string().c_str(), static_cast<unsigned long>(total), static_cast<unsigned long>(parts.size()), version);
 }
 
 std::vector<Bone> bonesFor(const std::vector<std::string>& joints, const Skins& skins)

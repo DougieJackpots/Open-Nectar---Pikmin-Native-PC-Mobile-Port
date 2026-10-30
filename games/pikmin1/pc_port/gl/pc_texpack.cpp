@@ -299,23 +299,21 @@ void pc_texpack_init(void)
     {
         char packTag[96] = {};
         if (!sSelectedPack.empty()) snprintf(packTag, sizeof(packTag), ", pack %s", sSelectedPack.c_str());
-        printf("[PC TexPack] %zu folder(s)%s, %zu base names indexed\n", folders, packTag, sIndex.size());
+        printf("[PC TexPack] %lu folder(s)%s, %lu base names indexed\n", static_cast<unsigned long>(folders), packTag, static_cast<unsigned long>(sIndex.size()));
     }
     if (!sIndex.empty() && !sSelectedPack.empty())
         printf("[PC TexPack] active pack: %s\n", sSelectedPack.c_str());
     if (!sBptcAvailable && !sS3tcAvailable)
         printf("[PC TexPack] WARNING: no BC7/S3TC on this GPU; compressed DDS will be decoded on the CPU (RGBA8, 4x the VRAM)\n");
     if (sEnabled && sIndex.size() < 5)
-        printf("[PC TexPack] WARNING: only %zu textures indexed; is this a complete pack?\n",
-               sIndex.size());
+        printf("[PC TexPack] WARNING: only %lu textures indexed; is this a complete pack?\n", static_cast<unsigned long>(sIndex.size()));
     if (!sEnabled) {
         snprintf(sStatus, sizeof(sStatus), "no tex1_* files in %s",
                  sSelectedPack.empty() ? "Load/Textures" : sSelectedPack.c_str());
     } else {
         const char* ddsHow = sIndexedDds == 0 ? "" : (sBptcAvailable && sS3tcAvailable)
             ? ", DDS on GPU" : ", DDS decoded on CPU (no BC7 on GPU)";
-        snprintf(sStatus, sizeof(sStatus), "%zu textures indexed (%zu dds, %zu png)%s",
-                 sIndex.size(), sIndexedDds, sIndexedPng, ddsHow);
+        snprintf(sStatus, sizeof(sStatus), "%lu textures indexed (%lu dds, %lu png)%s", static_cast<unsigned long>(sIndex.size()), static_cast<unsigned long>(sIndexedDds), static_cast<unsigned long>(sIndexedPng), ddsHow);
     }
 }
 

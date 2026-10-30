@@ -89,8 +89,7 @@ bool build()
 	sIni.swap(out.ini);
 	sGen.swap(out.genDefault);
 	sPlants.swap(out.genPlants);
-	fprintf(stderr, "[VS arena] built %s: %zu bytes, %zu verts, %zu coll tris, %zu route points, %zu props\n", PC_VS_ARENA_MOD, sMod.size(),
-	        out.vertices, out.collisionTris, out.routePoints, out.props);
+	fprintf(stderr, "[VS arena] built %s: %lu bytes, %lu verts, %lu coll tris, %lu route points, %lu props\n", PC_VS_ARENA_MOD, static_cast<unsigned long>(sMod.size()), static_cast<unsigned long>(out.vertices), static_cast<unsigned long>(out.collisionTris), static_cast<unsigned long>(out.routePoints), static_cast<unsigned long>(out.props));
 	return true;
 }
 

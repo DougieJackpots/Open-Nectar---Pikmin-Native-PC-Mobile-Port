@@ -2676,12 +2676,21 @@ static void calculate_output_area(int drawableWidth, int drawableHeight,
 static void gl_error_checkpoint(const char* stage) {
     // Read the environment once. Two of these sit in the per-draw path, so a
     // getenv per call meant well over a thousand environment scans per frame.
+    #ifdef __vita__
+    static const bool enabled = true;
+    static unsigned vitaReports = 0;
+    if (vitaReports >= 32) return;
+#else
     static const bool enabled = std::getenv("PIKMIN_GL_CHECK") != nullptr;
+#endif
     if (!enabled) return;
     for (;;) {
         const GLenum error = glGetError();
         if (error == GL_NO_ERROR) break;
         const char* name = "UNKNOWN";
+#ifdef __vita__
+        ++vitaReports;
+#endif
         switch (error) {
             case GL_INVALID_ENUM: name = "GL_INVALID_ENUM"; break;
             case GL_INVALID_VALUE: name = "GL_INVALID_VALUE"; break;
@@ -3039,6 +3048,14 @@ static void setup_vertex_attribs() {
 // it and the streaming ring is one glBindVertexArray. Leaves the streaming
 // VAO and ring bound on return, which is what the rest of the file assumes.
 static void mesh_arena_init() {
+#ifdef __vita__
+    // The optional VAO arena fails on device; retain the working stream path
+    // until its Vita layout and allocation are validated independently.
+    sMeshDecodeCacheEnabled = false;
+    sMeshArenaReady = false;
+    printf("[Vita] Resident mesh cache disabled; using streamed geometry.\n");
+    return;
+#endif
     if (!sMeshDecodeCacheEnabled || !glGenVertexArrays_ptr || !glBindVertexArray_ptr) {
         sMeshDecodeCacheEnabled = false;
         return;

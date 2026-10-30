@@ -1180,7 +1180,7 @@ void HostRenderer::render(s16* interleaved)
 				peak = std::max<s64>(peak, value < 0 ? -static_cast<s64>(value) : value);
 			}
 			if (peak > 60000) {
-				std::fprintf(stderr, "[jaudio-diag-stage] after-begin bus=%zu peak=%lld\n", bus,
+				std::fprintf(stderr, "[jaudio-diag-stage] after-begin bus=%lu peak=%lld\n", static_cast<unsigned long>(bus),
 				             static_cast<long long>(peak));
 			}
 		}
@@ -1335,16 +1335,14 @@ public:
 			    = std::fwrite(pcm.data() + firstFrame * 2, sizeof(s16) * 2, frames, mDump);
 			mDumpedFrames += written;
 			if (written != frames) {
-				std::fprintf(stderr, "[jaudio-diag] PCM dump write failed after %zu frames\n",
-				             mDumpedFrames);
+				std::fprintf(stderr, "[jaudio-diag] PCM dump write failed after %lu frames\n", static_cast<unsigned long>(mDumpedFrames));
 				std::fclose(mDump);
 				mDump = nullptr;
 			} else if (mDumpedFrames == kDiagnosticDumpFrames) {
 				std::fflush(mDump);
 				std::fclose(mDump);
 				mDump = nullptr;
-				std::fprintf(stderr, "[jaudio-diag] PCM dump complete: %zu frames (15.00s)\n",
-				             mDumpedFrames);
+				std::fprintf(stderr, "[jaudio-diag] PCM dump complete: %lu frames (15.00s)\n", static_cast<unsigned long>(mDumpedFrames));
 			}
 		}
 
@@ -1432,7 +1430,7 @@ private:
 				             static_cast<unsigned>(stats.minActualType),
 				             static_cast<unsigned>(stats.maxActualType));
 			} else {
-				std::fprintf(stderr, " src%zu", source);
+				std::fprintf(stderr, " src%lu", static_cast<unsigned long>(source));
 			}
 			std::fprintf(stderr,
 			             "{vf=%llu,max=%u,ratio=%04x-%04x,base=%08x-%08x,cur=%08x-%08x}",

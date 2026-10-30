@@ -214,7 +214,7 @@ bool loadModel(Model& model, const fs::path& path)
 		std::printf("[HD Models] warning: trailing data in %s\n", model.path.c_str());
 	}
 	model.ready = true;
-	std::printf("[HD Models] loaded %s: %zu parts, %zu bones\n", model.path.c_str(), model.parts.size(), model.bones.size());
+	std::printf("[HD Models] loaded %s: %lu parts, %lu bones\n", model.path.c_str(), static_cast<unsigned long>(model.parts.size()), static_cast<unsigned long>(model.bones.size()));
 	return true;
 }
 
